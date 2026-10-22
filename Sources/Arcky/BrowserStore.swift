@@ -437,6 +437,31 @@ final class BrowserStore {
         select(order[(current + delta + order.count) % order.count].id)
     }
 
+    // MARK: - Notes & Easels
+
+    /// Creates a Note as a new Today tab.
+    func newNote() {
+        let id = DocumentStore.shared.createNote()
+        newTab(ArckyDocument.note(id).url)
+        if let tabID = activeTabID { updateTab(tabID) { $0.title = "Untitled Note" } }
+    }
+
+    /// Creates an Easel as a new Today tab.
+    func newEasel() {
+        let id = DocumentStore.shared.createEasel()
+        newTab(ArckyDocument.easel(id).url)
+        if let tabID = activeTabID { updateTab(tabID) { $0.title = "Untitled Easel" } }
+    }
+
+    /// Keeps the sidebar title of every tab showing a document in step with its title.
+    func syncDocumentTitle(_ document: ArckyDocument, title: String) {
+        let url = document.url
+        let fallback = "Untitled \(document.kindName)"
+        for tab in allTabs where tab.url == url {
+            updateTab(tab.id) { $0.title = title.isEmpty ? fallback : title }
+        }
+    }
+
     // MARK: - Multi-select
 
     /// A click on a sidebar tab: ⌘ toggles it in the selection, ⇧ selects a range from the

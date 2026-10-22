@@ -77,7 +77,8 @@ final class WebViewPool: NSObject {
         if let webView = webViews[tab.id] { return webView }
         let profileID = store?.profileID(forTab: tab.id) ?? UUID()
         let webView = makeWebView(configuration: configuration(forProfile: profileID), tabID: tab.id)
-        if let url = tab.url { webView.load(URLRequest(url: url)) }
+        // Notes and Easels are drawn natively; there's nothing to load for them.
+        if let url = tab.url, ArckyDocument(url: url) == nil { webView.load(URLRequest(url: url)) }
         return webView
     }
 

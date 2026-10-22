@@ -102,14 +102,17 @@ private struct AddressPill: View {
     @State private var hovering = false
 
     var body: some View {
-        let host = store.activeTab?.url?.host()?.strippingWWW
+        let document = ArckyDocument(url: store.activeTab?.url)
+        let host = document == nil ? store.activeTab?.url?.host()?.strippingWWW : nil
         HStack(spacing: 6) {
-            if store.activeTab?.url?.scheme == "https" {
+            if let document {
+                Image(systemName: document.systemImage).font(.system(size: 11)).foregroundStyle(theme.secondaryText)
+            } else if store.activeTab?.url?.scheme == "https" {
                 Image(systemName: "lock.fill").font(.system(size: 10)).foregroundStyle(theme.secondaryText)
             }
-            Text(host ?? "Search or Enter URL…")
+            Text(document?.kindName ?? host ?? "Search or Enter URL…")
                 .font(.system(size: 13))
-                .foregroundStyle(host == nil ? theme.secondaryText : theme.primaryText)
+                .foregroundStyle(host == nil && document == nil ? theme.secondaryText : theme.primaryText)
                 .lineLimit(1)
             Spacer()
             if host != nil, store.contentBlocking {
@@ -299,6 +302,11 @@ private struct NewTabRow: View {
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture { store.openCommandBar(.newTab) }
+        .contextMenu {
+            Button("New Tab") { store.openCommandBar(.newTab) }
+            Button("New Note") { store.newNote() }
+            Button("New Easel") { store.newEasel() }
+        }
     }
 }
 

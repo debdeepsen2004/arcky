@@ -12,6 +12,10 @@ struct BrowserCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Tab") { store.openCommandBar(.newTab) }
                 .keyboardShortcut("t")
+            Button("New Note") { store.newNote() }
+                .keyboardShortcut("n", modifiers: [.control, .shift])
+            Button("New Easel") { store.newEasel() }
+                .keyboardShortcut("e", modifiers: [.control, .shift])
             Button("New Little Arc Window") { store.openLittleArc(nil) }
                 .keyboardShortcut("n", modifiers: [.command, .option])
             Button("New Space") { store.createSpace() }

@@ -147,7 +147,18 @@ private struct WebPane: View {
     var body: some View {
         ZStack(alignment: .top) {
             PaneBackground()
-            WebContentView(tab: tab, pool: store.pool, takesFocus: focused)
+            switch ArckyDocument(url: tab.url) {
+            case .note(let id):
+                NoteView(noteID: id)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .id(id)
+            case .easel(let id):
+                EaselView(easelID: id)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .id(id)
+            case nil:
+                WebContentView(tab: tab, pool: store.pool, takesFocus: focused)
+            }
             LoadingBar(runtime: store.pool.runtime(for: tab.id))
         }
         .overlay {

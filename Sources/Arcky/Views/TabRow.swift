@@ -172,6 +172,18 @@ struct Favicon: View {
     @Environment(\.spaceTheme) private var theme
 
     var body: some View {
+        if let document = ArckyDocument(url: tab.url) {
+            Image(systemName: document.systemImage)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .foregroundStyle(theme.accent)
+                .frame(width: size, height: size)
+        } else {
+            webFavicon
+        }
+    }
+
+    private var webFavicon: some View {
         AsyncImage(url: tab.resolvedFaviconURL) { phase in
             if let image = phase.image {
                 image.resizable().interpolation(.high).aspectRatio(contentMode: .fit)

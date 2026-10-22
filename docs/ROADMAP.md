@@ -97,8 +97,16 @@ Done:
   `make new tab`, `select`, `close`, `reload`, `go back`/`go forward`, `stop`,
   `execute … javascript`, `focus` (space). Arc scripts work after renaming the app
 
+- **Notes** (⌃⇧N, or right-click New Tab): rich text with headings, bold/italic/strike,
+  bullets and checklists; Markdown shortcuts (`# `, `- `, `[] `), list continuation,
+  click-to-tick boxes; links open in Arcky
+- **Easels** (⌃⇧E): a canvas with select/move/resize, text, pen, rectangles, ellipses,
+  colours, images (file or paste) and Captures of open tabs that link back to their page
+- Notes and Easels are sidebar items like tabs (`arcky://note/…`, `arcky://easel/…`), so
+  pinning, folders, Split View, multi-select and the Archive all work on them
+
 Next:
-- Easels and Notes; live folders; hover cards; "Instant Links"
+- Live folders; hover cards; "Instant Links"
 - Sync (CloudKit); history/downloads per profile; subscribing to EasyList-style filter lists
 
 ## Using Ghidra for deeper research

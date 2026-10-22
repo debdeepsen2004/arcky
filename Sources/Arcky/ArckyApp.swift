@@ -58,7 +58,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        MainActor.assumeIsolated { BrowserStore.shared.saveNow() }
+        MainActor.assumeIsolated {
+            BrowserStore.shared.saveNow()
+            DocumentStore.shared.saveNow()
+        }
     }
 
     /// Key handling that must beat the menus and the web page. Returns true when the key was used.
