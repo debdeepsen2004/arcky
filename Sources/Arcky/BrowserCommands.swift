@@ -85,6 +85,12 @@ struct BrowserCommands: Commands {
             Button("Separate Split View") { store.separateSplit(containing: store.activeTabID) }
                 .disabled(store.split(containing: store.activeTabID) == nil)
             Divider()
+            Button("Boost This Site…") { store.editBoostForActiveSite() }
+                .keyboardShortcut("b", modifiers: [.command, .option])
+                .disabled(store.activeHost == nil)
+            Button("Zap Elements") { store.startZapping() }
+                .disabled(store.activeHost == nil)
+            Divider()
             Button("Rename Tab") { store.renamingID = store.activeTabID }
             Button("Clear Today Tabs") { store.clearToday() }
             Divider()
@@ -112,6 +118,15 @@ struct BrowserCommands: Commands {
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
             Button("Previous Space") { store.cycleSpace(by: -1) }
                 .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+            Button("Edit Theme…") { store.editTheme(of: store.activeSpaceID) }
+            Menu("Profile") {
+                ForEach(store.profiles) { profile in
+                    Toggle("\(profile.emoji) \(profile.name)", isOn: Binding(
+                        get: { store.activeProfileID == profile.id },
+                        set: { if $0 { store.setProfile(profile.id, forSpace: store.activeSpaceID) } }
+                    ))
+                }
+            }
             Divider()
             ForEach(Array(store.spaces.enumerated()), id: \.element.id) { index, space in
                 let button = Button("\(space.emoji) \(space.name)") { store.switchToSpace(space.id) }

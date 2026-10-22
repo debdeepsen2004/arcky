@@ -3,7 +3,11 @@ import Foundation
 /// Everything saved between launches (Arc keeps the equivalent in StorableSidebar.json).
 struct PersistedState: Codable {
     var spaces: [Space]
+    /// The default profile's favorites; the only favorites before profiles existed.
     var favorites: [BrowserTab]
+    var profiles: [Profile]?
+    var favoritesByProfile: [UUID: [BrowserTab]]?
+    var boosts: [Boost]?
     var activeSpaceID: UUID
     var selectedTabBySpace: [UUID: UUID]
     var archive: [HistoryEntry]

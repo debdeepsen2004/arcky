@@ -9,12 +9,13 @@ struct RootView: View {
     @State private var peeking = false
 
     var body: some View {
-        let theme = SpaceTheme(hue: store.activeSpace.hue, dark: colorScheme == .dark)
+        let theme = SpaceTheme(space: store.activeSpace, systemDark: colorScheme == .dark)
         ZStack(alignment: .leading) {
             theme.background
             HStack(spacing: 0) {
                 if store.sidebarVisible {
                     SidebarView()
+                        .environment(\.colorScheme, theme.dark ? .dark : .light)
                         .frame(width: sidebarWidth)
                         .overlay(alignment: .trailing) { SidebarResizeHandle(width: $sidebarWidth) }
                         .transition(.move(edge: .leading).combined(with: .opacity))
@@ -33,6 +34,7 @@ struct RootView: View {
                     .onHover { if $0 { peeking = true } }
                 if peeking {
                     SidebarView()
+                        .environment(\.colorScheme, theme.dark ? .dark : .light)
                         .frame(width: sidebarWidth)
                         .background(theme.background)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -55,6 +57,12 @@ struct RootView: View {
         .background(WindowConfigurator(showsTrafficLights: store.sidebarVisible || peeking))
         .sheet(isPresented: Binding(get: { store.showingArchive }, set: { store.showingArchive = $0 })) {
             ArchiveView().environment(store)
+        }
+        .sheet(item: Binding(get: { store.editingThemeSpaceID.map(IdentifiedID.init) }, set: { store.editingThemeSpaceID = $0?.id })) { item in
+            ThemeEditorView(spaceID: item.id).environment(store)
+        }
+        .sheet(item: Binding(get: { store.editingBoostID.map(IdentifiedID.init) }, set: { store.editingBoostID = $0?.id })) { item in
+            BoostEditorView(boostID: item.id).environment(store)
         }
     }
 }

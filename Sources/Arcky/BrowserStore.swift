@@ -8,7 +8,14 @@ final class BrowserStore {
     static let shared = BrowserStore()
 
     var spaces: [Space]
-    var favorites: [BrowserTab]
+    /// The first profile is the default one, which uses WebKit's default data store.
+    var profiles: [Profile]
+    var favoritesByProfile: [UUID: [BrowserTab]]
+    var boosts: [Boost]
+    /// The Boost whose editor sheet is open.
+    var editingBoostID: UUID?
+    /// The space whose theme editor is open.
+    var editingThemeSpaceID: UUID?
     var activeSpaceID: UUID
     var selectedTabBySpace: [UUID: UUID]
     var archive: [HistoryEntry]
@@ -33,6 +40,8 @@ final class BrowserStore {
     @ObservationIgnored let miniPlayer = MiniPlayerController()
     @ObservationIgnored let littleArc = LittleArcController()
     @ObservationIgnored weak var mainWindow: NSWindow?
+    /// Which profile a Peek or Little Arc tab browses as.
+    @ObservationIgnored private var transientProfileIDs: [UUID: UUID] = [:]
     @ObservationIgnored private var closedTabs: [(tab: BrowserTab, location: TabLocation, index: Int)] = []
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var autoArchiveTask: Task<Void, Never>?
@@ -43,7 +52,10 @@ final class BrowserStore {
     private init() {
         if let saved = Persistence.load(), !saved.spaces.isEmpty {
             spaces = saved.spaces
-            favorites = saved.favorites
+            let profiles = saved.profiles.flatMap { $0.isEmpty ? nil : $0 } ?? [Self.makeDefaultProfile()]
+            self.profiles = profiles
+            favoritesByProfile = saved.favoritesByProfile ?? [profiles[0].id: saved.favorites]
+            boosts = saved.boosts ?? []
             activeSpaceID = saved.spaces.contains { $0.id == saved.activeSpaceID } ? saved.activeSpaceID : saved.spaces[0].id
             selectedTabBySpace = saved.selectedTabBySpace
             archive = saved.archive
@@ -53,7 +65,10 @@ final class BrowserStore {
         } else {
             let home = Space(name: "Home", emoji: Self.spaceEmoji[0], hue: Self.spaceHues[0])
             spaces = [home]
-            favorites = []
+            let profile = Self.makeDefaultProfile()
+            profiles = [profile]
+            favoritesByProfile = [profile.id: []]
+            boosts = []
             activeSpaceID = home.id
             selectedTabBySpace = [:]
             archive = []
@@ -64,7 +79,12 @@ final class BrowserStore {
         pool.store = self
         miniPlayer.store = self
         littleArc.store = self
+        pool.installBoosts(boosts)
         startAutoArchive()
+    }
+
+    private static func makeDefaultProfile() -> Profile {
+        Profile(name: "Default", emoji: "🙂")
     }
 
     // MARK: - Lookup
@@ -74,10 +94,38 @@ final class BrowserStore {
     var activeTabID: UUID? { selectedTabBySpace[activeSpaceID] }
     var activeTab: BrowserTab? { tab(activeTabID) }
 
+    var defaultProfileID: UUID { profiles[0].id }
+    var activeProfileID: UUID { profileID(of: activeSpace) }
+    var activeProfile: Profile { profiles.first { $0.id == activeProfileID } ?? profiles[0] }
+
+    /// The favorites shown in the sidebar: those of the active space's profile.
+    var favorites: [BrowserTab] { favoritesByProfile[activeProfileID] ?? [] }
+
     /// Tabs reachable from the active space, in sidebar order.
     var sidebarOrder: [BrowserTab] { favorites + activeSpace.pinned.flatMap(\.allTabs) + activeSpace.today }
 
-    var allTabs: [BrowserTab] { favorites + spaces.flatMap { $0.pinned.flatMap(\.allTabs) + $0.today } }
+    var allTabs: [BrowserTab] {
+        favoritesByProfile.values.flatMap { $0 } + spaces.flatMap { $0.pinned.flatMap(\.allTabs) + $0.today }
+    }
+
+    func profileID(of space: Space) -> UUID {
+        guard let id = space.profileID, profiles.contains(where: { $0.id == id }) else { return defaultProfileID }
+        return id
+    }
+
+    func profileID(of location: TabLocation) -> UUID {
+        if case .favorites(let profileID) = location { return profileID }
+        guard let spaceID = spaceID(of: location), let space = spaces.first(where: { $0.id == spaceID }) else {
+            return defaultProfileID
+        }
+        return profileID(of: space)
+    }
+
+    /// The profile whose cookies and storage a tab's web view uses.
+    func profileID(forTab id: UUID) -> UUID {
+        if let (location, _) = location(of: id) { return profileID(of: location) }
+        return transientProfileIDs[id] ?? activeProfileID
+    }
 
     func tab(_ id: UUID?) -> BrowserTab? {
         guard let id else { return nil }
@@ -92,7 +140,9 @@ final class BrowserStore {
 
     /// The container holding a tab or folder, and its index there.
     func location(of id: UUID) -> (TabLocation, Int)? {
-        if let i = favorites.firstIndex(where: { $0.id == id }) { return (.favorites, i) }
+        for (profileID, tabs) in favoritesByProfile {
+            if let i = tabs.firstIndex(where: { $0.id == id }) { return (.favorites(profileID), i) }
+        }
         for space in spaces {
             if let found = Self.find(id, in: space.pinned, container: .pinned(space.id)) { return found }
             if let i = space.today.firstIndex(where: { $0.id == id }) { return (.today(space.id), i) }
@@ -100,7 +150,7 @@ final class BrowserStore {
         return nil
     }
 
-    /// The space a container belongs to; nil for Favorites, which every space shares.
+    /// The space a container belongs to; nil for Favorites, which every space of a profile shares.
     func spaceID(of location: TabLocation) -> UUID? {
         switch location {
         case .favorites: nil
@@ -113,8 +163,8 @@ final class BrowserStore {
     /// whose inout access counts as a mutation and would re-render forever.
     func nodes(in location: TabLocation) -> [SidebarNode] {
         switch location {
-        case .favorites:
-            return favorites.map(SidebarNode.tab)
+        case .favorites(let profileID):
+            return (favoritesByProfile[profileID] ?? []).map(SidebarNode.tab)
         case .pinned(let spaceID):
             return spaces.first { $0.id == spaceID }?.pinned ?? []
         case .today(let spaceID):
@@ -131,10 +181,10 @@ final class BrowserStore {
     @discardableResult
     private func modifyNodes<R>(_ location: TabLocation, _ body: (inout [SidebarNode]) -> R) -> R? {
         switch location {
-        case .favorites:
-            var nodes = favorites.map(SidebarNode.tab)
+        case .favorites(let profileID):
+            var nodes = (favoritesByProfile[profileID] ?? []).map(SidebarNode.tab)
             let result = body(&nodes)
-            favorites = nodes.compactMap(\.tab)
+            favoritesByProfile[profileID] = nodes.compactMap(\.tab)
             return result
         case .today(let spaceID):
             guard let i = spaces.firstIndex(where: { $0.id == spaceID }) else { return nil }
@@ -313,6 +363,10 @@ final class BrowserStore {
             }
             node = .tab(tab)
         }
+        // A web view can't change data store, so tabs crossing profiles reload in the new one.
+        if profileID(of: source) != profileID(of: destination) {
+            for tab in node.allTabs { unload(tab.id) }
+        }
         modifyNodes(source) { $0.remove(at: sourceIndex) }
         modifyNodes(destination) { nodes in
             let index = beforeID.flatMap { b in nodes.firstIndex { $0.id == b } } ?? nodes.count
@@ -335,10 +389,10 @@ final class BrowserStore {
 
     func toggleFavorite(_ id: UUID) {
         guard let (location, _) = location(of: id) else { return }
-        if location == .favorites {
+        if location.isFavorites {
             moveToTopOfToday(id, spaceID: activeSpaceID)
         } else {
-            move(id, to: .favorites)
+            move(id, to: .favorites(profileID(of: location)))
         }
     }
 
@@ -536,6 +590,7 @@ final class BrowserStore {
         closePeek()
         let tab = BrowserTab(url: url)
         transientTabs[tab.id] = tab
+        transientProfileIDs[tab.id] = activeProfileID
         peekTabID = tab.id
         return tab.id
     }
@@ -556,6 +611,7 @@ final class BrowserStore {
     func openLittleArc(_ url: URL?) {
         let tab = BrowserTab(url: url)
         transientTabs[tab.id] = tab
+        transientProfileIDs[tab.id] = activeProfileID
         littleArc.open(tabID: tab.id)
     }
 
@@ -580,9 +636,13 @@ final class BrowserStore {
     func discardTransient(_ id: UUID) {
         pool.discard(id)
         transientTabs[id] = nil
+        transientProfileIDs[id] = nil
     }
 
     private func adoptTransient(_ tab: BrowserTab) {
+        if transientProfileIDs.removeValue(forKey: tab.id) != activeProfileID {
+            pool.discard(tab.id)
+        }
         transientTabs[tab.id] = nil
         modifyNodes(.today(activeSpaceID)) { $0.insert(.tab(tab), at: 0) }
         select(tab.id)
@@ -639,6 +699,116 @@ final class BrowserStore {
     while ((index = text.indexOf(needle, index)) !== -1) { count++; index += needle.length; }
     return count;
     """
+
+    // MARK: - Profiles
+
+    @discardableResult
+    func createProfile(name: String = "New Profile", emoji: String = "🧑‍💻") -> Profile {
+        let profile = Profile(name: name, emoji: emoji)
+        profiles.append(profile)
+        favoritesByProfile[profile.id] = []
+        scheduleSave()
+        return profile
+    }
+
+    func updateProfile(_ id: UUID, _ body: (inout Profile) -> Void) {
+        guard let i = profiles.firstIndex(where: { $0.id == id }) else { return }
+        body(&profiles[i])
+        scheduleSave()
+    }
+
+    /// Moves a space to another profile. Its tabs reload with that profile's cookies.
+    func setProfile(_ profileID: UUID, forSpace spaceID: UUID) {
+        guard let space = spaces.first(where: { $0.id == spaceID }), self.profileID(of: space) != profileID else { return }
+        for tab in space.pinned.flatMap(\.allTabs) + space.today { unload(tab.id) }
+        updateSpace(spaceID) { $0.profileID = profileID == defaultProfileID ? nil : profileID }
+    }
+
+    /// Deletes a profile and all of its website data. Its spaces move to the default profile
+    /// and its favorites go to the Archive. The default profile can't be deleted.
+    func deleteProfile(_ id: UUID) {
+        guard id != defaultProfileID, profiles.contains(where: { $0.id == id }) else { return }
+        for space in spaces where space.profileID == id {
+            setProfile(defaultProfileID, forSpace: space.id)
+        }
+        for tab in favoritesByProfile[id] ?? [] {
+            unload(tab.id)
+            if let url = tab.url { addToArchive(url: url, title: tab.displayTitle) }
+            for (space, selected) in selectedTabBySpace where selected == tab.id {
+                selectedTabBySpace[space] = nil
+            }
+        }
+        favoritesByProfile[id] = nil
+        profiles.removeAll { $0.id == id }
+        pool.removeDataStore(forProfile: id)
+        scheduleSave()
+    }
+
+    // MARK: - Themes
+
+    func editTheme(of spaceID: UUID) {
+        editingThemeSpaceID = spaceID
+    }
+
+    func setStyle(_ style: SpaceStyle?, forSpace spaceID: UUID) {
+        updateSpace(spaceID) { $0.style = style }
+    }
+
+    // MARK: - Boosts
+
+    /// The Boost for a host, enabled or not.
+    func boost(forHost host: String?) -> Boost? {
+        guard let host else { return nil }
+        return boosts.first { $0.matches(host: host) }
+    }
+
+    var activeHost: String? { activeTab?.url?.host()?.lowercased() }
+
+    /// Opens the Boost editor for the current site, creating its Boost if needed.
+    func editBoostForActiveSite() {
+        guard let host = activeHost else { return }
+        editingBoostID = boostForSite(host).id
+    }
+
+    func updateBoost(_ id: UUID, _ body: (inout Boost) -> Void) {
+        guard let i = boosts.firstIndex(where: { $0.id == id }) else { return }
+        body(&boosts[i])
+        pool.installBoosts(boosts)
+        scheduleSave()
+    }
+
+    func deleteBoost(_ id: UUID) {
+        boosts.removeAll { $0.id == id }
+        if editingBoostID == id { editingBoostID = nil }
+        pool.installBoosts(boosts)
+        scheduleSave()
+    }
+
+    /// Lets the user click elements on the current page to hide them.
+    func startZapping() {
+        guard let id = activeTabID else { return }
+        editingBoostID = nil
+        pool.startZapping(tabID: id)
+    }
+
+    /// Called by the zap tool with the selector of a clicked element.
+    func addZap(_ selector: String, host: String) {
+        // Hiding the root would blank the whole site.
+        guard !["html", "body", ":root"].contains(selector.lowercased()) else { return }
+        let boost = boostForSite(host)
+        updateBoost(boost.id) { boost in
+            if !boost.zappedSelectors.contains(selector) { boost.zappedSelectors.append(selector) }
+        }
+    }
+
+    private func boostForSite(_ host: String) -> Boost {
+        if let existing = boost(forHost: host) { return existing }
+        let domain = host.strippingWWW
+        let boost = Boost(domain: domain, name: domain)
+        boosts.append(boost)
+        scheduleSave()
+        return boost
+    }
 
     // MARK: - Command bar & chrome
 
@@ -734,7 +904,10 @@ final class BrowserStore {
         saveTask?.cancel()
         Persistence.save(PersistedState(
             spaces: spaces,
-            favorites: favorites,
+            favorites: favoritesByProfile[defaultProfileID] ?? [],
+            profiles: profiles,
+            favoritesByProfile: favoritesByProfile,
+            boosts: boosts,
             activeSpaceID: activeSpaceID,
             selectedTabBySpace: selectedTabBySpace,
             archive: archive,

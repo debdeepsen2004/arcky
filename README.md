@@ -35,6 +35,7 @@ State is saved to `~/Library/Application Support/Arcky/state.json`.
 | Find in page | ⌘F, ⌘G / ⇧⌘G |
 | Add Split View | ⌃⇧= |
 | Picture in Picture | ⌃⌘P |
+| Boost this site | ⌥⌘B |
 | Downloads | ⇧⌘J |
 | Copy URL | ⇧⌘C |
 | Next / previous tab | ⌥⌘↓ / ⌥⌘↑, ⌃Tab |

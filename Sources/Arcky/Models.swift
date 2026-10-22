@@ -1,4 +1,5 @@
-import Foundation
+import AppKit
+import SwiftUI
 
 /// A tab in the sidebar. Mirrors Arc's `SidebarItem` of kind tab.
 struct BrowserTab: Identifiable, Codable, Hashable {
@@ -74,7 +75,69 @@ enum SidebarNode: Identifiable, Codable, Hashable {
     }
 }
 
-/// A Space: its own pinned tree, Today tabs and theme colour.
+/// A browsing identity with its own cookies, storage and favorites. Spaces belong to one.
+struct Profile: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var name: String
+    var emoji: String
+}
+
+/// An sRGB colour that survives encoding.
+struct ThemeColor: Codable, Hashable {
+    var red: Double
+    var green: Double
+    var blue: Double
+
+    init(red: Double, green: Double, blue: Double) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+    }
+
+    init(hue: Double, saturation: Double, brightness: Double) {
+        let ns = NSColor(hue: hue, saturation: saturation, brightness: brightness, alpha: 1)
+        self.init(red: ns.redComponent, green: ns.greenComponent, blue: ns.blueComponent)
+    }
+
+    init(_ color: Color) {
+        let ns = NSColor(color).usingColorSpace(.sRGB) ?? .gray
+        self.init(red: ns.redComponent, green: ns.greenComponent, blue: ns.blueComponent)
+    }
+
+    var color: Color { Color(.sRGB, red: red, green: green, blue: blue) }
+
+    /// Linear mix towards `other`; `amount` 0 keeps self, 1 gives `other`.
+    func mixed(with other: ThemeColor, _ amount: Double) -> ThemeColor {
+        ThemeColor(
+            red: red + (other.red - red) * amount,
+            green: green + (other.green - green) * amount,
+            blue: blue + (other.blue - blue) * amount
+        )
+    }
+
+    static let white = ThemeColor(red: 1, green: 1, blue: 1)
+    static let night = ThemeColor(red: 0.07, green: 0.07, blue: 0.09)
+}
+
+enum ThemeAppearance: String, Codable, CaseIterable, Identifiable {
+    case auto, light, dark
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+}
+
+/// A space's custom theme from the theme editor: a gradient of up to three colours.
+struct SpaceStyle: Codable, Hashable {
+    static let maxColors = 3
+
+    var colors: [ThemeColor]
+    /// How strongly the colours show through, 0 (nearly neutral) to 1 (vivid).
+    var intensity = 0.6
+    /// Film-grain noise over the background, 0 to 1.
+    var grain = 0.0
+    var appearance = ThemeAppearance.auto
+}
+
+/// A Space: its own pinned tree, Today tabs and theme.
 struct Space: Identifiable, Codable, Hashable {
     var id = UUID()
     var name: String
@@ -82,9 +145,37 @@ struct Space: Identifiable, Codable, Hashable {
     var hue: Double
     var pinned: [SidebarNode] = []
     var today: [BrowserTab] = []
+    /// nil means the default profile.
+    var profileID: UUID?
+    /// nil means the simple theme derived from `hue`.
+    var style: SpaceStyle?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, emoji, hue, pinned, today
+        case id, name, emoji, hue, pinned, today, profileID, style
+    }
+}
+
+/// Arc's Boosts: per-site customisations.
+struct Boost: Identifiable, Codable, Hashable {
+    var id = UUID()
+    /// The site it applies to, e.g. "github.com" (subdomains included).
+    var domain: String
+    var name: String
+    var isEnabled = true
+    var css = ""
+    var js = ""
+    /// Elements hidden with the zap tool, as CSS selectors.
+    var zappedSelectors: [String] = []
+    /// Replaces the page's fonts (code blocks keep theirs).
+    var fontFamily: String?
+
+    func matches(host: String) -> Bool {
+        let host = host.lowercased()
+        return host == domain || host.hasSuffix("." + domain)
+    }
+
+    var isEmpty: Bool {
+        css.isEmpty && js.isEmpty && zappedSelectors.isEmpty && fontFamily == nil
     }
 }
 
@@ -102,6 +193,8 @@ extension Space {
             pinned = try c.decode([BrowserTab].self, forKey: .pinned).map(SidebarNode.tab)
         }
         today = try c.decode([BrowserTab].self, forKey: .today)
+        profileID = try c.decodeIfPresent(UUID.self, forKey: .profileID)
+        style = try c.decodeIfPresent(SpaceStyle.self, forKey: .style)
     }
 }
 
@@ -125,13 +218,19 @@ struct HistoryEntry: Identifiable, Codable, Hashable {
 
 /// The container a sidebar node lives in.
 enum TabLocation: Hashable {
-    case favorites
+    /// The favorites of the given profile.
+    case favorites(UUID)
     case pinned(UUID)
     case today(UUID)
     case folder(UUID)
 
     var isToday: Bool {
         if case .today = self { return true }
+        return false
+    }
+
+    var isFavorites: Bool {
+        if case .favorites = self { return true }
         return false
     }
 

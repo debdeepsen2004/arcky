@@ -84,13 +84,13 @@ struct TabContextMenu: View {
         case .favorites:
             Button("Remove from Favorites") { store.toggleFavorite(tab.id) }
         }
-        if location != .favorites {
+        if !location.isFavorites {
             Button("Add to New Folder") {
                 let container = location.acceptsFolders ? location : .pinned(store.spaceID(of: location) ?? store.activeSpaceID)
                 store.newFolder(in: container, containing: [tab.id])
             }
         }
-        if store.spaces.count > 1, location != .favorites {
+        if store.spaces.count > 1, !location.isFavorites {
             Menu("Move to Space") {
                 ForEach(store.spaces.filter { $0.id != store.activeSpaceID }) { space in
                     Button("\(space.emoji) \(space.name)") {

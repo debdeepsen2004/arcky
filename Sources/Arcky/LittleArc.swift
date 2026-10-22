@@ -61,7 +61,7 @@ struct LittleArcView: View {
     @FocusState private var editingAddress: Bool
 
     var body: some View {
-        let theme = SpaceTheme(hue: store.activeSpace.hue, dark: colorScheme == .dark)
+        let theme = SpaceTheme(space: store.activeSpace, systemDark: colorScheme == .dark)
         let tab = store.transientTabs[tabID]
         VStack(spacing: 0) {
             HStack(spacing: 4) {

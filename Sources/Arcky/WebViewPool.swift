@@ -20,15 +20,34 @@ final class WebViewPool: NSObject {
     private var tabIDs: [ObjectIdentifier: UUID] = [:]
     private var runtimes: [UUID: TabRuntime] = [:]
     private var observations: [UUID: [NSKeyValueObservation]] = [:]
+    private var zapHandlerInstalled = false
 
-    private lazy var configuration: WKWebViewConfiguration = {
+    /// One configuration per profile, so each profile has its own cookies and storage.
+    private var configurations: [UUID: WKWebViewConfiguration] = [:]
+    /// Shared by every profile; carries the Boosts scripts and the zap tool's message handler.
+    private let userContentController = WKUserContentController()
+    private lazy var zapHandler = ZapMessageHandler(pool: self)
+
+    private func configuration(forProfile profileID: UUID) -> WKWebViewConfiguration {
+        if let configuration = configurations[profileID] { return configuration }
         let config = WKWebViewConfiguration()
-        config.websiteDataStore = .default()
+        let isDefault = profileID == store?.defaultProfileID
+        config.websiteDataStore = isDefault ? .default() : WKWebsiteDataStore(forIdentifier: profileID)
+        config.userContentController = userContentController
         // Sites serve their full experience to Safari's user agent.
         config.applicationNameForUserAgent = "Version/18.0 Safari/605.1.15"
         config.preferences.isElementFullscreenEnabled = true
+        configurations[profileID] = config
         return config
-    }()
+    }
+
+    /// Deletes a profile's cookies, caches and storage. Its web views must already be closed.
+    func removeDataStore(forProfile profileID: UUID) {
+        configurations[profileID] = nil
+        Task {
+            try? await WKWebsiteDataStore.remove(forIdentifier: profileID)
+        }
+    }
 
     private static let faviconScript = """
     (() => {
@@ -50,7 +69,8 @@ final class WebViewPool: NSObject {
 
     func webView(for tab: BrowserTab) -> WKWebView {
         if let webView = webViews[tab.id] { return webView }
-        let webView = makeWebView(configuration: configuration, tabID: tab.id)
+        let profileID = store?.profileID(forTab: tab.id) ?? UUID()
+        let webView = makeWebView(configuration: configuration(forProfile: profileID), tabID: tab.id)
         if let url = tab.url { webView.load(URLRequest(url: url)) }
         return webView
     }
@@ -203,6 +223,157 @@ final class WebViewPool: NSObject {
 
     func exitPictureInPicture(tabID: UUID) {
         webViews[tabID]?.callAsyncJavaScript(Self.exitPictureInPictureScript, arguments: [:], in: nil, in: .page)
+    }
+
+    // MARK: Boosts
+
+    /// Defines `__arckyApplyBoostStyles`, which puts each matching Boost's CSS, zapped elements
+    /// and font into a constructed stylesheet. Constructed sheets aren't subject to the
+    /// page's Content Security Policy, unlike <style> elements.
+    private static let boostRuntime = """
+    window.__arckyApplyBoostStyles = function (boosts) {
+      const host = location.hostname.toLowerCase();
+      const css = boosts
+        .filter(b => host === b.domain || host.endsWith('.' + b.domain))
+        .map(b => [
+          b.css,
+          b.zap.length ? b.zap.join(',\\n') + ' { display: none !important; }' : '',
+          b.font ? `body, body *:not(code):not(pre):not(kbd):not(samp):not(pre *) { font-family: "${b.font}" !important; }` : ''
+        ].join('\\n'))
+        .join('\\n');
+      if (!window.__arckyBoostSheet) {
+        window.__arckyBoostSheet = new CSSStyleSheet();
+        document.adoptedStyleSheets = [...document.adoptedStyleSheets, window.__arckyBoostSheet];
+      }
+      window.__arckyBoostSheet.replaceSync(css);
+    };
+    """
+
+    private struct BoostStyle: Encodable {
+        let domain: String
+        let css: String
+        let zap: [String]
+        let font: String?
+    }
+
+    /// Re-registers the Boosts user script for future page loads and restyles open pages.
+    /// Boost JavaScript runs when a page loads, so edits to it apply on reload.
+    func installBoosts(_ boosts: [Boost]) {
+        let enabled = boosts.filter(\.isEnabled)
+        let styles = enabled.map { BoostStyle(domain: $0.domain, css: $0.css, zap: $0.zappedSelectors, font: $0.fontFamily) }
+        let json = (try? JSONEncoder().encode(styles)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+
+        var source = Self.boostRuntime + "\nwindow.__arckyApplyBoostStyles(\(json));\n"
+        for boost in enabled where !boost.js.isEmpty {
+            let domain = (try? JSONEncoder().encode(boost.domain)).flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
+            // Inlined rather than eval'd, so pages whose CSP forbids eval still run it.
+            source += """
+            (function () {
+              const host = location.hostname.toLowerCase(), domain = \(domain);
+              if (host !== domain && !host.endsWith('.' + domain)) return;
+              const run = function () { try {
+            \(boost.js)
+              } catch (error) { console.error('Arcky Boost', error); } };
+              if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, { once: true }); else run();
+            })();
+
+            """
+        }
+
+        userContentController.removeAllUserScripts()
+        userContentController.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .page))
+
+        let restyle = Self.boostRuntime + "\nwindow.__arckyApplyBoostStyles(\(json));"
+        for webView in webViews.values {
+            webView.evaluateJavaScript(restyle)
+        }
+    }
+
+    // MARK: Zap
+
+    /// Highlights the element under the pointer; a click hides it and reports a selector
+    /// for it. Esc or the banner's Done button ends zapping. Runs in Arcky's own script world,
+    /// so pages can't post fake zaps.
+    private static let zapScript = """
+    (() => {
+      if (window.__arckyZapping) return;
+      window.__arckyZapping = true;
+      const banner = document.createElement('div');
+      banner.textContent = 'Click elements to zap them. Press Esc or click here when done.';
+      Object.assign(banner.style, { position: 'fixed', top: '12px', left: '50%', transform: 'translateX(-50%)',
+        zIndex: 2147483647, background: '#111', color: '#fff', font: '13px -apple-system, sans-serif',
+        padding: '8px 14px', borderRadius: '10px', boxShadow: '0 4px 20px rgba(0,0,0,.3)', cursor: 'pointer' });
+      document.documentElement.appendChild(banner);
+      let current = null, saved = '';
+      const mark = el => { if (current) current.style.outline = saved; current = el; saved = el ? el.style.outline : ''; if (el) el.style.outline = '2px solid #ff3b6b'; };
+      const selectorFor = el => {
+        if (el.id && document.querySelectorAll('#' + CSS.escape(el.id)).length === 1) return '#' + CSS.escape(el.id);
+        const parts = [];
+        while (el && el !== document.body && el.nodeType === 1) {
+          let part = el.localName;
+          if (el.id) { parts.unshift('#' + CSS.escape(el.id)); break; }
+          const siblings = el.parentElement ? [...el.parentElement.children].filter(s => s.localName === el.localName) : [];
+          if (siblings.length > 1) part += `:nth-of-type(${siblings.indexOf(el) + 1})`;
+          parts.unshift(part);
+          el = el.parentElement;
+        }
+        return parts.join(' > ');
+      };
+      const finish = () => {
+        mark(null);
+        banner.remove();
+        document.removeEventListener('mouseover', over, true);
+        document.removeEventListener('click', click, true);
+        document.removeEventListener('keydown', key, true);
+        window.__arckyZapping = false;
+      };
+      // Never zap the whole page.
+      const zappable = el => el && el !== document.documentElement && el !== document.body && !banner.contains(el);
+      const over = e => mark(zappable(e.target) ? e.target : null);
+      const click = e => {
+        e.preventDefault(); e.stopPropagation();
+        if (banner.contains(e.target)) { finish(); return; }
+        if (!zappable(e.target)) return;
+        const el = e.target, selector = selectorFor(el);
+        mark(null);
+        el.style.setProperty('display', 'none', 'important');
+        window.webkit.messageHandlers.arckyZap.postMessage({ selector, host: location.hostname });
+      };
+      const key = e => { if (e.key === 'Escape') { e.preventDefault(); finish(); } };
+      document.addEventListener('mouseover', over, true);
+      document.addEventListener('click', click, true);
+      document.addEventListener('keydown', key, true);
+    })();
+    """
+
+    func startZapping(tabID: UUID) {
+        guard let webView = webViews[tabID] else { return }
+        if !zapHandlerInstalled {
+            userContentController.add(zapHandler, contentWorld: .defaultClient, name: "arckyZap")
+            zapHandlerInstalled = true
+        }
+        webView.window?.makeFirstResponder(webView)
+        webView.evaluateJavaScript(Self.zapScript, in: nil, in: .defaultClient)
+    }
+
+    fileprivate func receiveZap(_ body: Any) {
+        guard let message = body as? [String: Any], let selector = message["selector"] as? String,
+              let host = message["host"] as? String, !selector.isEmpty else { return }
+        store?.addZap(selector, host: host)
+    }
+}
+
+/// Forwards zap messages without the content controller retaining the pool.
+private final class ZapMessageHandler: NSObject, WKScriptMessageHandler {
+    weak var pool: WebViewPool?
+
+    init(pool: WebViewPool) {
+        self.pool = pool
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        let body = message.body
+        MainActor.assumeIsolated { pool?.receiveZap(body) }
     }
 }
 

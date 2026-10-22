@@ -68,11 +68,17 @@ backend would plug in.
   for http/https; "Make Default" in Settings); "Open in Arcky" moves the page to Today
 - Not yet: print, view source, sidebar media controls
 
-### Stage 4: Personalisation
-- Space themes: gradient editor, noise/grain, light/dark per space
-- **Boosts**: per-site CSS/JS injection with a zap (hide elements) picker
-- Profiles: separate `WKWebsiteDataStore` per profile, bound to spaces
-- Settings window, custom search engines, shortcut editor
+### Stage 4: Personalisation ✅
+- **Space themes** (Spaces ▸ Edit Theme…, or a space's right-click menu): presets, up to
+  three gradient colours, intensity, film grain, and Auto/Light/Dark per space
+- **Boosts** (⌥⌘B or the bolt in the address pill): per-site CSS, JavaScript, page font and
+  zapped elements. CSS goes in a constructed stylesheet and JS is inlined in a user script,
+  so sites' Content Security Policies don't block them. The zap tool runs in Arcky's own
+  script world and refuses to hide the whole page
+- **Profiles** (Settings ▸ Profiles; Spaces ▸ Profile): each has its own
+  `WKWebsiteDataStore` (cookies, logins, storage) and its own favorites; spaces belong to
+  one profile. Deleting a profile erases its website data
+- Not yet: per-profile history and downloads, custom search engines, shortcut editor
 
 ### Stage 5: Power features
 - **Easels and Notes** (canvas and rich-text documents in the sidebar)

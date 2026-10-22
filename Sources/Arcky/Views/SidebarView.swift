@@ -104,6 +104,18 @@ private struct AddressPill: View {
                 .foregroundStyle(host == nil ? theme.secondaryText : theme.primaryText)
                 .lineLimit(1)
             Spacer()
+            if host != nil {
+                // Arc's Boost bolt: filled when this site has an enabled Boost.
+                let boost = store.boost(forHost: store.activeHost)
+                Button { store.editBoostForActiveSite() } label: {
+                    Image(systemName: boost?.isEnabled == true ? "bolt.fill" : "bolt")
+                        .font(.system(size: 11))
+                        .foregroundStyle(boost?.isEnabled == true ? Color.pink : theme.secondaryText)
+                }
+                .buttonStyle(.plain)
+                .opacity(hovering || boost != nil ? 1 : 0)
+                .help(boost == nil ? "Boost This Site" : "Edit Boost")
+            }
         }
         .padding(.horizontal, 10)
         .frame(height: 34)
@@ -150,9 +162,9 @@ private struct FavoriteTile: View {
             .help(tab.displayTitle)
             .draggable(tab.id.uuidString)
             .dropDestination(for: String.self) { items, _ in
-                dropTabs(items, store: store, to: .favorites, before: tab.id)
+                dropTabs(items, store: store, to: .favorites(store.activeProfileID), before: tab.id)
             }
-            .contextMenu { TabContextMenu(tab: tab, location: .favorites) }
+            .contextMenu { TabContextMenu(tab: tab, location: .favorites(store.activeProfileID)) }
     }
 }
 
@@ -167,6 +179,15 @@ private struct SpaceHeader: View {
         HStack(spacing: 6) {
             Text(space.emoji)
             Text(space.name).font(.system(size: 12, weight: .semibold))
+            if store.profiles.count > 1 {
+                let profile = store.profiles.first { $0.id == store.profileID(of: space) }
+                Text(profile.map { "\($0.emoji) \($0.name)" } ?? "")
+                    .font(.system(size: 10, weight: .medium))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(theme.tileFill))
+                    .help("This space's profile")
+            }
             Spacer()
             if hovering {
                 Button { store.newFolder(in: .pinned(space.id)) } label: {

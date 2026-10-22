@@ -62,7 +62,26 @@ struct SpaceSwitcher: View {
         }
         Menu("Color") {
             ForEach(Self.hues, id: \.0) { name, hue in
-                Button(name) { store.updateSpace(space.id) { $0.hue = hue } }
+                Button(name) {
+                    store.updateSpace(space.id) {
+                        $0.hue = hue
+                        $0.style = nil
+                    }
+                }
+            }
+        }
+        Button("Edit Theme…") { store.editTheme(of: space.id) }
+        Menu("Profile") {
+            ForEach(store.profiles) { profile in
+                Toggle("\(profile.emoji) \(profile.name)", isOn: Binding(
+                    get: { store.profileID(of: space) == profile.id },
+                    set: { if $0 { store.setProfile(profile.id, forSpace: space.id) } }
+                ))
+            }
+            Divider()
+            Button("New Profile") {
+                let profile = store.createProfile()
+                store.setProfile(profile.id, forSpace: space.id)
             }
         }
         Divider()
