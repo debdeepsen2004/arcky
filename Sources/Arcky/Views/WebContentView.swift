@@ -2,10 +2,14 @@ import AppKit
 import SwiftUI
 import WebKit
 
-/// Hosts the active tab's WKWebView, swapping it in when the selection changes.
+/// Hosts a tab's WKWebView. The pool decides which host holds it when several want the same tab.
 struct WebContentView: NSViewRepresentable {
     let tab: BrowserTab
     let pool: WebViewPool
+    /// Make the web view first responder when it is swapped in. Only the focused split pane should.
+    var takesFocus = true
+
+    func makeCoordinator() -> WebViewPool { pool }
 
     func makeNSView(context: Context) -> NSView {
         let container = NSView()
@@ -17,12 +21,10 @@ struct WebContentView: NSViewRepresentable {
     }
 
     func updateNSView(_ container: NSView, context: Context) {
-        let webView = pool.webView(for: tab)
-        guard webView.superview !== container else { return }
-        container.subviews.forEach { $0.removeFromSuperview() }
-        webView.frame = container.bounds
-        webView.autoresizingMask = [.width, .height]
-        container.addSubview(webView)
-        container.window?.makeFirstResponder(webView)
+        pool.attach(tab, to: container, focus: takesFocus)
+    }
+
+    static func dismantleNSView(_ container: NSView, coordinator pool: WebViewPool) {
+        pool.detach(container)
     }
 }

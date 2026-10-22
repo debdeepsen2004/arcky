@@ -55,12 +55,18 @@ backend would plug in.
 - Multi-select (⌘/⇧-click) and "New Folder from Selection"; drag tabs between spaces
 - Two-finger swipe between spaces; sidebar-on-the-right option; settings for sidebar
 
-### Stage 3: Arc signature features
-- **Little Arc**: small floating windows for links opened from other apps; default browser
-- **Split View**: two to four panes, horizontal/vertical (⌃⇧+)
-- **Peek**: preview pinned-tab links in an overlay instead of navigating
-- **Picture-in-Picture** and media controls in the sidebar
-- Find in page (⌘F), print, view source, web inspector toggle
+### Stage 3: Arc signature features ✅
+- **Find in page** (⌘F, ⌘G, ⇧⌘G): match count, wrap-around, highlight cleared on close
+- **Split View** (⌃⇧=): up to four panes, draggable dividers, click a pane to focus it,
+  rotate, close pane, separate; saved across launches
+- **Peek**: links that leave a pinned tab's or favorite's site (and ⇧-clicked links) open
+  in an overlay; "Open as Tab" keeps them
+- **Picture-in-Picture**: leaving a playing video pops it out. WKWebView doesn't expose
+  native PiP to third-party apps, so Arcky's floating mini player (the tab's own web view
+  with the video stretched to fill it) takes over; ⌃⌘P tries native PiP
+- **Little Arc** (⌥⌘N): links from other apps open in a small window (Arcky registers
+  for http/https; "Make Default" in Settings); "Open in Arcky" moves the page to Today
+- Not yet: print, view source, sidebar media controls
 
 ### Stage 4: Personalisation
 - Space themes: gradient editor, noise/grain, light/dark per space

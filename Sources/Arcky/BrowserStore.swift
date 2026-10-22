@@ -1,5 +1,6 @@
-import Foundation
+import AppKit
 import Observation
+import WebKit
 
 /// App-wide browser state: spaces, sidebar tabs and folders, selection and history.
 @MainActor @Observable
@@ -19,9 +20,19 @@ final class BrowserStore {
     var renamingID: UUID?
     var showingArchive = false
     var showingDownloads = false
+    var splits: [TabSplit]
+    /// Tabs outside the sidebar: the Peek overlay and Little Arc windows.
+    var transientTabs: [UUID: BrowserTab] = [:]
+    var peekTabID: UUID?
+    var findBarVisible = false
+    var findQuery = ""
+    var findStatus: String?
 
     @ObservationIgnored let pool = WebViewPool()
     @ObservationIgnored let downloads = DownloadManager()
+    @ObservationIgnored let miniPlayer = MiniPlayerController()
+    @ObservationIgnored let littleArc = LittleArcController()
+    @ObservationIgnored weak var mainWindow: NSWindow?
     @ObservationIgnored private var closedTabs: [(tab: BrowserTab, location: TabLocation, index: Int)] = []
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var autoArchiveTask: Task<Void, Never>?
@@ -38,6 +49,7 @@ final class BrowserStore {
             archive = saved.archive
             history = saved.history
             autoArchiveInterval = saved.autoArchive ?? .hours12
+            splits = saved.splits ?? []
         } else {
             let home = Space(name: "Home", emoji: Self.spaceEmoji[0], hue: Self.spaceHues[0])
             spaces = [home]
@@ -47,8 +59,11 @@ final class BrowserStore {
             archive = []
             history = []
             autoArchiveInterval = .hours12
+            splits = []
         }
         pool.store = self
+        miniPlayer.store = self
+        littleArc.store = self
         startAutoArchive()
     }
 
@@ -65,7 +80,8 @@ final class BrowserStore {
     var allTabs: [BrowserTab] { favorites + spaces.flatMap { $0.pinned.flatMap(\.allTabs) + $0.today } }
 
     func tab(_ id: UUID?) -> BrowserTab? {
-        guard let id, let (location, index) = location(of: id) else { return nil }
+        guard let id else { return nil }
+        guard let (location, index) = location(of: id) else { return transientTabs[id] }
         return nodes(in: location)[index].tab
     }
 
@@ -171,7 +187,13 @@ final class BrowserStore {
     }
 
     func updateTab(_ id: UUID, _ body: (inout BrowserTab) -> Void) {
-        guard let (location, index) = location(of: id) else { return }
+        guard let (location, index) = location(of: id) else {
+            if var tab = transientTabs[id] {
+                body(&tab)
+                transientTabs[id] = tab
+            }
+            return
+        }
         modifyNodes(location) { nodes in
             guard case .tab(var tab) = nodes[index] else { return }
             body(&tab)
@@ -184,13 +206,29 @@ final class BrowserStore {
 
     func select(_ id: UUID) {
         guard let (location, _) = location(of: id) else { return }
+        let previous = activeTabID
         // Auto-archive counts from when a tab was last left, so stamp the tab being left too.
-        if let previous = activeTabID, previous != id {
+        if let previous, previous != id {
             updateTab(previous) { $0.lastActive = Date() }
         }
+        // Coming back to a tab ends its Picture-in-Picture.
+        if miniPlayer.tabID == id { miniPlayer.close() }
+        pool.exitPictureInPicture(tabID: id)
+
         if let spaceID = spaceID(of: location) { activeSpaceID = spaceID }
         selectedTabBySpace[activeSpaceID] = id
         updateTab(id) { $0.lastActive = Date() }
+
+        // Leaving a playing video pops it out, unless it stays visible in the same split.
+        if let previous, previous != id, split(containing: id)?.tabIDs.contains(previous) != true {
+            pool.startPictureInPictureIfPlaying(tabID: previous)
+        }
+    }
+
+    /// Unloads a tab's web view, closing its mini player first.
+    private func unload(_ id: UUID) {
+        if miniPlayer.tabID == id { miniPlayer.close() }
+        pool.discard(id)
     }
 
     /// New tabs go to the top of Today, like Arc.
@@ -217,7 +255,7 @@ final class BrowserStore {
     func close(_ id: UUID, archiving: Bool = true) {
         guard let (location, index) = location(of: id), let tab = tab(id) else { return }
         let wasActive = activeTabID == id
-        pool.discard(id)
+        unload(id)
         if location.isToday {
             modifyNodes(location) { $0.remove(at: index) }
             closedTabs.append((tab, location, index))
@@ -373,7 +411,7 @@ final class BrowserStore {
     func deleteFolder(_ id: UUID) {
         guard let (location, index) = location(of: id), let folder = folder(id) else { return }
         for tab in folder.allTabs {
-            pool.discard(tab.id)
+            unload(tab.id)
             if let url = tab.url { addToArchive(url: url, title: tab.displayTitle) }
             for (space, selected) in selectedTabBySpace where selected == tab.id {
                 selectedTabBySpace[space] = nil
@@ -419,12 +457,188 @@ final class BrowserStore {
 
     func deleteSpace(_ id: UUID) {
         guard spaces.count > 1, let i = spaces.firstIndex(where: { $0.id == id }) else { return }
-        for tab in spaces[i].pinned.flatMap(\.allTabs) + spaces[i].today { pool.discard(tab.id) }
+        for tab in spaces[i].pinned.flatMap(\.allTabs) + spaces[i].today { unload(tab.id) }
         spaces.remove(at: i)
         selectedTabBySpace[id] = nil
         if activeSpaceID == id { activeSpaceID = spaces[max(0, i - 1)].id }
         scheduleSave()
     }
+
+    // MARK: - Split View
+
+    func split(containing tabID: UUID?) -> TabSplit? {
+        guard let tabID else { return nil }
+        return splits.first { $0.tabIDs.contains(tabID) }
+    }
+
+    /// Puts `tabID` in a split next to the active tab (joining the active tab's split if it has one).
+    func splitWithActive(_ tabID: UUID) {
+        guard let active = activeTabID, active != tabID, tab(tabID) != nil else { return }
+        removeFromSplit(tabID)
+        if let i = splits.firstIndex(where: { $0.tabIDs.contains(active) }) {
+            guard splits[i].tabIDs.count < TabSplit.maxPanes else { return }
+            let after = splits[i].tabIDs.firstIndex(of: active)! + 1
+            splits[i].tabIDs.insert(tabID, at: after)
+        } else {
+            splits.append(TabSplit(tabIDs: [active, tabID]))
+        }
+        select(tabID)
+        scheduleSave()
+    }
+
+    /// Opens `url` in a new tab shown as a split pane beside the active tab.
+    func openSplitPane(_ url: URL) {
+        guard activeTabID != nil else {
+            newTab(url)
+            return
+        }
+        let id = newTab(url, select: false)
+        splitWithActive(id)
+    }
+
+    func removeFromSplit(_ tabID: UUID) {
+        guard let i = splits.firstIndex(where: { $0.tabIDs.contains(tabID) }) else { return }
+        splits[i].tabIDs.removeAll { $0 == tabID }
+        if splits[i].tabIDs.count < 2 { splits.remove(at: i) }
+        scheduleSave()
+    }
+
+    func separateSplit(containing tabID: UUID?) {
+        guard let split = split(containing: tabID) else { return }
+        splits.removeAll { $0.id == split.id }
+        scheduleSave()
+    }
+
+    func rotateSplit(containing tabID: UUID?) {
+        guard let i = splits.firstIndex(where: { tabID.map($0.tabIDs.contains) ?? false }) else { return }
+        splits[i].vertical.toggle()
+        scheduleSave()
+    }
+
+    /// Drops closed tabs from splits and splits left with a single pane.
+    private func normalizeSplits() {
+        let live = Set(allTabs.map(\.id))
+        let cleaned = splits
+            .map { split in
+                var split = split
+                split.tabIDs.removeAll { !live.contains($0) }
+                return split
+            }
+            .filter { $0.tabIDs.count >= 2 }
+        if cleaned != splits { splits = cleaned }
+    }
+
+    // MARK: - Peek & Little Arc
+
+    /// Opens `url` in the Peek overlay above the current page.
+    @discardableResult
+    func peek(_ url: URL?) -> UUID {
+        closePeek()
+        let tab = BrowserTab(url: url)
+        transientTabs[tab.id] = tab
+        peekTabID = tab.id
+        return tab.id
+    }
+
+    func closePeek() {
+        guard let id = peekTabID else { return }
+        peekTabID = nil
+        discardTransient(id)
+    }
+
+    /// Turns the peeked page into a regular Today tab.
+    func expandPeek() {
+        guard let id = peekTabID, let tab = transientTabs[id] else { return }
+        peekTabID = nil
+        adoptTransient(tab)
+    }
+
+    func openLittleArc(_ url: URL?) {
+        let tab = BrowserTab(url: url)
+        transientTabs[tab.id] = tab
+        littleArc.open(tabID: tab.id)
+    }
+
+    /// Moves a Little Arc page into the main window's Today list.
+    func expandLittleArc(_ id: UUID) {
+        guard let tab = transientTabs[id] else { return }
+        littleArc.expand(id)
+        adoptTransient(tab)
+        mainWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+    }
+
+    /// Closes the Peek or Little Arc window showing `id` (e.g. after `window.close()`).
+    func closeTransient(_ id: UUID) {
+        if peekTabID == id {
+            closePeek()
+        } else {
+            littleArc.close(id)
+        }
+    }
+
+    func discardTransient(_ id: UUID) {
+        pool.discard(id)
+        transientTabs[id] = nil
+    }
+
+    private func adoptTransient(_ tab: BrowserTab) {
+        transientTabs[tab.id] = nil
+        modifyNodes(.today(activeSpaceID)) { $0.insert(.tab(tab), at: 0) }
+        select(tab.id)
+        scheduleSave()
+    }
+
+    // MARK: - Find in page
+
+    func showFindBar() {
+        guard activeTabID != nil else { return }
+        findBarVisible = true
+    }
+
+    func closeFindBar() {
+        findBarVisible = false
+        findQuery = ""
+        findStatus = nil
+        // WebKit only hides its yellow find indicator when a search fails, so search for something
+        // that can't match. The selection it left behind is cleared separately.
+        if let webView = pool.existingWebView(for: activeTabID) {
+            webView.find("\u{2063}arcky-no-match\u{2063}", configuration: WKFindConfiguration()) { _ in
+                webView.evaluateJavaScript("window.getSelection().removeAllRanges()")
+            }
+        }
+    }
+
+    /// Finds the next (or previous) match of `findQuery`, highlighting it, and updates `findStatus`.
+    func find(backwards: Bool = false) {
+        let query = findQuery
+        guard let webView = pool.existingWebView(for: activeTabID), !query.isEmpty else {
+            findStatus = nil
+            return
+        }
+        let configuration = WKFindConfiguration()
+        configuration.backwards = backwards
+        configuration.wraps = true
+        webView.find(query, configuration: configuration) { [weak self] result in
+            guard let self, self.findQuery == query else { return }
+            guard result.matchFound else {
+                self.findStatus = "Not found"
+                return
+            }
+            webView.callAsyncJavaScript(Self.countMatchesScript, arguments: ["query": query], in: nil, in: .defaultClient) { count in
+                guard self.findQuery == query, case .success(let value) = count, let n = (value as? NSNumber)?.intValue else { return }
+                self.findStatus = n == 1 ? "1 match" : "\(n) matches"
+            }
+        }
+    }
+
+    private static let countMatchesScript = """
+    const text = document.body.innerText.toLowerCase();
+    const needle = query.toLowerCase();
+    let count = 0, index = 0;
+    while ((index = text.indexOf(needle, index)) !== -1) { count++; index += needle.length; }
+    return count;
+    """
 
     // MARK: - Command bar & chrome
 
@@ -507,6 +721,7 @@ final class BrowserStore {
     // MARK: - Saving
 
     func scheduleSave() {
+        normalizeSplits()
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1))
@@ -524,7 +739,8 @@ final class BrowserStore {
             selectedTabBySpace: selectedTabBySpace,
             archive: archive,
             history: history,
-            autoArchive: autoArchiveInterval
+            autoArchive: autoArchiveInterval,
+            splits: splits
         ))
     }
 }

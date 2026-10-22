@@ -55,6 +55,44 @@ final class WebViewPool: NSObject {
         return webView
     }
 
+    // MARK: Hosting
+
+    private struct WeakHost {
+        weak var view: NSView?
+    }
+
+    /// Views that have asked to show each tab, oldest first. A web view can only live in one
+    /// of them; when that one goes away (say Peek animating out after "Open as Tab"), it moves
+    /// to the newest host that is left.
+    private var hosts: [UUID: [WeakHost]] = [:]
+
+    func attach(_ tab: BrowserTab, to host: NSView, focus: Bool) {
+        let webView = webView(for: tab)
+        var list = (hosts[tab.id] ?? []).filter { $0.view != nil && $0.view !== host }
+        list.append(WeakHost(view: host))
+        hosts[tab.id] = list
+        guard webView.superview !== host else { return }
+        install(webView, in: host)
+        if focus { host.window?.makeFirstResponder(webView) }
+    }
+
+    func detach(_ host: NSView) {
+        for (id, list) in hosts {
+            let remaining = list.filter { $0.view != nil && $0.view !== host }
+            hosts[id] = remaining
+            if let webView = webViews[id], webView.superview === host, let next = remaining.last?.view {
+                install(webView, in: next)
+            }
+        }
+    }
+
+    private func install(_ webView: WKWebView, in host: NSView) {
+        host.subviews.forEach { $0.removeFromSuperview() }
+        webView.frame = host.bounds
+        webView.autoresizingMask = [.width, .height]
+        host.addSubview(webView)
+    }
+
     /// Loads `url` if the tab is live; otherwise it loads from the tab's URL when first shown.
     func load(_ url: URL, tabID: UUID) {
         webViews[tabID]?.load(URLRequest(url: url))
@@ -68,6 +106,7 @@ final class WebViewPool: NSObject {
             webView.removeFromSuperview()
         }
         runtimes[id] = nil
+        hosts[id] = nil
     }
 
     private func makeWebView(configuration: WKWebViewConfiguration, tabID: UUID) -> WKWebView {
@@ -113,8 +152,57 @@ final class WebViewPool: NSObject {
         return webView
     }
 
-    private func tabID(of webView: WKWebView) -> UUID? {
+    func tabID(of webView: WKWebView) -> UUID? {
         tabIDs[ObjectIdentifier(webView)]
+    }
+
+    // MARK: Picture-in-Picture
+
+    /// Tries native Picture-in-Picture for a playing video and answers "native", "fallback" or "none".
+    /// Scripts run through the WebKit API count as a user gesture, so no click is needed.
+    private static let startPictureInPictureScript = """
+    const video = [...document.querySelectorAll('video')].find(v => !v.paused && !v.ended && v.readyState > 2);
+    if (!video) return 'none';
+    if (document.pictureInPictureEnabled && !video.disablePictureInPicture) {
+      try { await video.requestPictureInPicture(); return 'native'; } catch (e) {}
+    }
+    if (video.webkitSupportsPresentationMode && video.webkitSupportsPresentationMode('picture-in-picture')) {
+      video.webkitSetPresentationMode('picture-in-picture');
+      return 'native';
+    }
+    return 'fallback';
+    """
+
+    private static let exitPictureInPictureScript = """
+    if (document.pictureInPictureElement) { await document.exitPictureInPicture(); }
+    for (const v of document.querySelectorAll('video')) {
+      if (v.webkitPresentationMode === 'picture-in-picture') v.webkitSetPresentationMode('inline');
+    }
+    """
+
+    static var autoPictureInPictureEnabled: Bool {
+        UserDefaults.standard.object(forKey: "autoPictureInPicture") as? Bool ?? true
+    }
+
+    /// Called when leaving a tab: pops a playing video out, natively or into Arcky's mini player.
+    func startPictureInPictureIfPlaying(tabID: UUID) {
+        guard Self.autoPictureInPictureEnabled else { return }
+        startPictureInPicture(tabID: tabID, fallbackToMiniPlayer: true)
+    }
+
+    /// ⌃⌘P: pops out the active tab's playing video. Only native PiP works here,
+    /// because the mini player would have to take the web view out of the main window.
+    func startPictureInPicture(tabID: UUID, fallbackToMiniPlayer: Bool) {
+        guard let webView = webViews[tabID] else { return }
+        webView.callAsyncJavaScript(Self.startPictureInPictureScript, arguments: [:], in: nil, in: .page) { [weak self] result in
+            guard fallbackToMiniPlayer, case .success(let value) = result, value as? String == "fallback",
+                  let store = self?.store, store.activeTabID != tabID else { return }
+            store.miniPlayer.show(tabID: tabID, webView: webView)
+        }
+    }
+
+    func exitPictureInPicture(tabID: UUID) {
+        webViews[tabID]?.callAsyncJavaScript(Self.exitPictureInPictureScript, arguments: [:], in: nil, in: .page)
     }
 }
 
@@ -126,8 +214,29 @@ extension WebViewPool: WKNavigationDelegate {
             store?.newTab(url, select: flags.contains(.shift))
             return .cancel
         }
+        if shouldPeek(navigationAction, in: webView), let url = navigationAction.request.url {
+            store?.peek(url)
+            return .cancel
+        }
         if navigationAction.shouldPerformDownload { return .download }
         return .allow
+    }
+
+    /// Arc's Peek: links that leave a pinned tab's or favorite's site open in an overlay,
+    /// so the pinned tab stays where it is. ⇧-clicking any link peeks too.
+    private func shouldPeek(_ action: WKNavigationAction, in webView: WKWebView) -> Bool {
+        guard action.navigationType == .linkActivated, action.targetFrame?.isMainFrame != false,
+              let store, let id = tabID(of: webView), store.peekTabID != id,
+              let target = action.request.url, target.scheme?.hasPrefix("http") == true else { return false }
+        if action.modifierFlags.contains(.shift) { return true }
+        guard let (location, _) = store.location(of: id), !location.isToday else { return false }
+        return Self.siteKey(target) != Self.siteKey(webView.url)
+    }
+
+    /// Host without "www." and subdomains, so docs.github.com and github.com count as one site.
+    private static func siteKey(_ url: URL?) -> String? {
+        guard let host = url?.host()?.lowercased() else { return nil }
+        return host.split(separator: ".").suffix(2).joined(separator: ".")
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
@@ -186,12 +295,24 @@ extension WebViewPool: WKUIDelegate {
     /// `target=_blank` links and `window.open` become new tabs that keep their opener.
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         guard let store else { return nil }
-        let id = store.newTab(navigationAction.request.url, select: true)
+        // New windows from pinned tabs and favorites open in Peek, like their links do.
+        let opener = tabID(of: webView).flatMap { store.location(of: $0)?.0 }
+        let id: UUID
+        if let opener, !opener.isToday {
+            id = store.peek(navigationAction.request.url)
+        } else {
+            id = store.newTab(navigationAction.request.url, select: true)
+        }
         return makeWebView(configuration: configuration, tabID: id)
     }
 
     func webViewDidClose(_ webView: WKWebView) {
-        if let id = tabID(of: webView) { store?.close(id) }
+        guard let id = tabID(of: webView), let store else { return }
+        if store.transientTabs[id] != nil {
+            store.closeTransient(id)
+        } else {
+            store.close(id)
+        }
     }
 
     func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo) async {

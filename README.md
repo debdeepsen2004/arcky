@@ -30,7 +30,11 @@ State is saved to `~/Library/Application Support/Arcky/state.json`.
 | Close tab / reopen | ⌘W / ⇧⌘T |
 | Pin / unpin | ⌘D |
 | Toggle sidebar | ⌘S |
-| New folder | ⌥⌘N |
+| New folder | ⌃⌘N |
+| Little Arc window | ⌥⌘N |
+| Find in page | ⌘F, ⌘G / ⇧⌘G |
+| Add Split View | ⌃⇧= |
+| Picture in Picture | ⌃⌘P |
 | Downloads | ⇧⌘J |
 | Copy URL | ⇧⌘C |
 | Next / previous tab | ⌥⌘↓ / ⌥⌘↑, ⌃Tab |

@@ -105,6 +105,16 @@ extension Space {
     }
 }
 
+/// Two to four tabs shown side by side (Arc's Split View).
+struct TabSplit: Identifiable, Codable, Hashable {
+    static let maxPanes = 4
+
+    var id = UUID()
+    var tabIDs: [UUID]
+    /// Panes stacked top to bottom instead of left to right.
+    var vertical = false
+}
+
 /// A visited or archived page.
 struct HistoryEntry: Identifiable, Codable, Hashable {
     var id = UUID()
@@ -158,6 +168,8 @@ enum AutoArchiveInterval: Double, Codable, CaseIterable, Identifiable {
 enum CommandBarMode: Equatable {
     case newTab
     case editCurrent
+    /// Picks the page for a new Split View pane next to the active tab.
+    case splitPane
 }
 
 extension String {

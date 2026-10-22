@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Arc's Archive: closed and auto-archived tabs, grouped by day, searchable and restorable.
@@ -119,17 +120,50 @@ private struct ArchiveRow: View {
 /// ⌘, settings window.
 struct SettingsView: View {
     @Environment(BrowserStore.self) private var store
+    @AppStorage("autoPictureInPicture") private var autoPictureInPicture = true
+    @State private var isDefaultBrowser = SettingsView.checkDefaultBrowser()
 
     var body: some View {
         Form {
-            Picker("Archive Today tabs after", selection: Binding(get: { store.autoArchiveInterval }, set: { store.setAutoArchive($0) })) {
-                ForEach(AutoArchiveInterval.allCases) { Text($0.title).tag($0) }
+            Section {
+                Picker("Archive Today tabs after", selection: Binding(get: { store.autoArchiveInterval }, set: { store.setAutoArchive($0) })) {
+                    ForEach(AutoArchiveInterval.allCases) { Text($0.title).tag($0) }
+                }
+                Text("Today tabs you haven't looked at for this long are archived. Pinned tabs and favorites are never archived.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            Text("Today tabs you haven't looked at for this long are archived. Pinned tabs and favorites are never archived.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Section {
+                Toggle("Picture-in-Picture when leaving a playing video", isOn: $autoPictureInPicture)
+            }
+            Section {
+                LabeledContent("Default browser") {
+                    if isDefaultBrowser {
+                        Text("Arcky is your default browser").foregroundStyle(.secondary)
+                    } else {
+                        Button("Make Default") { makeDefault() }
+                    }
+                }
+                Text("Links opened from other apps open in Little Arc.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .frame(width: 460)
+    }
+
+    private static func checkDefaultBrowser() -> Bool {
+        guard let handler = NSWorkspace.shared.urlForApplication(toOpen: URL(string: "https://example.com")!) else { return false }
+        return Bundle(url: handler)?.bundleIdentifier == Bundle.main.bundleIdentifier
+    }
+
+    /// macOS asks the user to confirm the change.
+    private func makeDefault() {
+        let app = Bundle.main.bundleURL
+        Task {
+            try? await NSWorkspace.shared.setDefaultApplication(at: app, toOpenURLsWithScheme: "http")
+            isDefaultBrowser = Self.checkDefaultBrowser()
+        }
     }
 }

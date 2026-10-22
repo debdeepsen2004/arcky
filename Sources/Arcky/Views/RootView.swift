@@ -84,22 +84,159 @@ private struct SidebarResizeHandle: View {
     }
 }
 
-/// The rounded "card" holding the active web page.
+/// The page area: one rounded card, or a Split View of several, plus find bar and Peek overlays.
 private struct ContentArea: View {
     @Environment(BrowserStore.self) private var store
 
     var body: some View {
         ZStack(alignment: .top) {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(nsColor: .windowBackgroundColor))
-                .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
             if let tab = store.activeTab {
-                WebContentView(tab: tab, pool: store.pool)
-                LoadingBar(runtime: store.pool.runtime(for: tab.id))
+                if let split = store.split(containing: tab.id) {
+                    SplitContent(split: split)
+                } else {
+                    WebPane(tab: tab, focused: true, showsFocusRing: false)
+                }
             } else {
+                PaneBackground()
                 EmptyTabView()
             }
+            if store.findBarVisible {
+                FindBar()
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(10)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            if let id = store.peekTabID, let tab = store.transientTabs[id] {
+                // Removal is instant so "Open as Tab" hands the page straight to the main pane.
+                PeekView(tab: tab)
+                    .transition(.asymmetric(insertion: .scale(scale: 0.96).combined(with: .opacity), removal: .identity))
+            }
         }
+        .animation(.spring(duration: 0.25), value: store.peekTabID)
+        .animation(.easeOut(duration: 0.15), value: store.findBarVisible)
+    }
+}
+
+private struct PaneBackground: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(Color(nsColor: .windowBackgroundColor))
+            .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+    }
+}
+
+/// One page card. In a split, the focused pane gets an accent ring.
+private struct WebPane: View {
+    let tab: BrowserTab
+    let focused: Bool
+    let showsFocusRing: Bool
+    @Environment(BrowserStore.self) private var store
+    @Environment(\.spaceTheme) private var theme
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            PaneBackground()
+            WebContentView(tab: tab, pool: store.pool, takesFocus: focused)
+            LoadingBar(runtime: store.pool.runtime(for: tab.id))
+        }
+        .overlay {
+            if showsFocusRing && focused {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(theme.accent, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
+/// Split View panes with draggable dividers. Clicking a pane focuses it (see AppDelegate).
+private struct SplitContent: View {
+    let split: TabSplit
+    @Environment(BrowserStore.self) private var store
+
+    var body: some View {
+        let panes = ForEach(split.tabIDs.compactMap { store.tab($0) }) { tab in
+            WebPane(tab: tab, focused: tab.id == store.activeTabID, showsFocusRing: true)
+                .padding(3)
+        }
+        if split.vertical {
+            VSplitView { panes }
+        } else {
+            HSplitView { panes }
+        }
+    }
+}
+
+/// Arc's Peek: a page floating over the current one, which can be closed or kept as a tab.
+private struct PeekView: View {
+    let tab: BrowserTab
+    @Environment(BrowserStore.self) private var store
+    @Environment(\.spaceTheme) private var theme
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.25)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .onTapGesture { store.closePeek() }
+            VStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    IconButton(systemName: "xmark", help: "Close (Esc)") { store.closePeek() }
+                    Text(tab.url?.host()?.strippingWWW ?? tab.displayTitle)
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                    Spacer()
+                    IconButton(systemName: "arrow.up.left.and.arrow.down.right", help: "Open as Tab") { store.expandPeek() }
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .frame(height: 36)
+                WebContentView(tab: tab, pool: store.pool, takesFocus: true)
+            }
+            .background(Color(nsColor: .windowBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .shadow(color: .black.opacity(0.35), radius: 30, y: 10)
+            .padding(.horizontal, 56)
+            .padding(.vertical, 36)
+        }
+    }
+}
+
+/// ⌘F find bar. Return finds the next match; ⌘G / ⇧⌘G step through matches; Esc closes.
+private struct FindBar: View {
+    @Environment(BrowserStore.self) private var store
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        @Bindable var store = store
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Find in page", text: $store.findQuery)
+                .textFieldStyle(.plain)
+                .frame(width: 180)
+                .focused($focused)
+                .onSubmit { store.find() }
+                .onExitCommand { store.closeFindBar() }
+            if let status = store.findStatus {
+                Text(status)
+                    .font(.system(size: 11))
+                    .foregroundStyle(status == "Not found" ? .red : .secondary)
+                    .fixedSize()
+            }
+            IconButton(systemName: "chevron.up", help: "Previous (⇧⌘G)") { store.find(backwards: true) }
+            IconButton(systemName: "chevron.down", help: "Next (⌘G)") { store.find() }
+            IconButton(systemName: "xmark", help: "Close (Esc)") { store.closeFindBar() }
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 4)
+        .frame(height: 36)
+        // Solid, not a material: over a white page a material turns mid-grey and the count disappears.
+        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))
+        .shadow(color: .black.opacity(0.2), radius: 8, y: 2)
+        .fixedSize()
+        .onAppear { focused = true }
+        .onChange(of: store.findQuery) { store.find() }
+        .onChange(of: store.findBarVisible) { if store.findBarVisible { focused = true } }
     }
 }
 
@@ -145,6 +282,7 @@ struct WindowConfigurator: NSViewRepresentable {
     func updateNSView(_ view: NSView, context: Context) {
         DispatchQueue.main.async {
             guard let window = view.window else { return }
+            BrowserStore.shared.mainWindow = window
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)

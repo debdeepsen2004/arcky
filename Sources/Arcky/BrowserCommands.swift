@@ -12,9 +12,11 @@ struct BrowserCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Tab") { store.openCommandBar(.newTab) }
                 .keyboardShortcut("t")
+            Button("New Little Arc Window") { store.openLittleArc(nil) }
+                .keyboardShortcut("n", modifiers: [.command, .option])
             Button("New Space") { store.createSpace() }
             Button("New Folder") { store.newFolder() }
-                .keyboardShortcut("n", modifiers: [.command, .option])
+                .keyboardShortcut("n", modifiers: [.command, .control])
             Divider()
             Button("Reopen Closed Tab") { store.reopenClosedTab() }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
@@ -28,6 +30,17 @@ struct BrowserCommands: Commands {
                 .keyboardShortcut("c", modifiers: [.command, .shift])
         }
 
+        CommandGroup(replacing: .textEditing) {
+            Button("Find in Page…") { store.showFindBar() }
+                .keyboardShortcut("f")
+            Button("Find Next") { store.find() }
+                .keyboardShortcut("g")
+                .disabled(store.findQuery.isEmpty)
+            Button("Find Previous") { store.find(backwards: true) }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .disabled(store.findQuery.isEmpty)
+        }
+
         CommandGroup(replacing: .sidebar) {
             Button(store.sidebarVisible ? "Hide Sidebar" : "Show Sidebar") { store.toggleSidebar() }
                 .keyboardShortcut("s")
@@ -38,6 +51,11 @@ struct BrowserCommands: Commands {
                 .keyboardShortcut("=")
             Button("Zoom Out") { activeWebView.zoom(by: -0.1) }
                 .keyboardShortcut("-")
+            Divider()
+            Button("Picture in Picture") {
+                if let id = store.activeTabID { store.pool.startPictureInPicture(tabID: id, fallbackToMiniPlayer: false) }
+            }
+            .keyboardShortcut("p", modifiers: [.command, .control])
         }
 
         CommandMenu("Navigate") {
@@ -56,6 +74,17 @@ struct BrowserCommands: Commands {
                 .keyboardShortcut("d")
             Button("Add / Remove Favorite") { store.activeTabID.map(store.toggleFavorite) }
             Button("Duplicate Tab") { store.activeTabID.map(store.duplicate) }
+            Divider()
+            Button("Add Split View") { store.openCommandBar(.splitPane) }
+                .keyboardShortcut("=", modifiers: [.control, .shift])
+                .disabled(store.activeTabID == nil)
+            Button("Close Split View Pane") { store.activeTabID.map(store.removeFromSplit) }
+                .disabled(store.split(containing: store.activeTabID) == nil)
+            Button("Rotate Split View") { store.rotateSplit(containing: store.activeTabID) }
+                .disabled(store.split(containing: store.activeTabID) == nil)
+            Button("Separate Split View") { store.separateSplit(containing: store.activeTabID) }
+                .disabled(store.split(containing: store.activeTabID) == nil)
+            Divider()
             Button("Rename Tab") { store.renamingID = store.activeTabID }
             Button("Clear Today Tabs") { store.clearToday() }
             Divider()

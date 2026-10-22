@@ -9,6 +9,7 @@ struct PersistedState: Codable {
     var archive: [HistoryEntry]
     var history: [HistoryEntry]
     var autoArchive: AutoArchiveInterval?
+    var splits: [TabSplit]?
 }
 
 enum Persistence {

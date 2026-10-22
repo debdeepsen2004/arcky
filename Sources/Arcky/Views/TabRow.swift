@@ -21,6 +21,12 @@ struct TabRow: View {
                     .truncationMode(.tail)
             }
             Spacer(minLength: 0)
+            if store.split(containing: tab.id) != nil, !hovering {
+                Image(systemName: "rectangle.split.2x1")
+                    .font(.system(size: 10))
+                    .foregroundStyle(theme.secondaryText)
+                    .help("In Split View")
+            }
             if hovering {
                 Button { store.close(tab.id) } label: {
                     Image(systemName: isPinned ? "minus" : "xmark")
@@ -92,6 +98,11 @@ struct TabContextMenu: View {
                     }
                 }
             }
+        }
+        if store.split(containing: tab.id) != nil {
+            Button("Remove from Split View") { store.removeFromSplit(tab.id) }
+        } else if store.activeTabID != nil, store.activeTabID != tab.id {
+            Button("Open in Split View") { store.splitWithActive(tab.id) }
         }
         Button("Duplicate") { store.duplicate(tab.id) }
         Divider()

@@ -29,7 +29,7 @@ struct CommandBarView: View {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 17, weight: .medium))
                         .foregroundStyle(.secondary)
-                    TextField("Search or Enter URL…", text: $query)
+                    TextField(mode == .splitPane ? "Open in Split View…" : "Search or Enter URL…", text: $query)
                         .textFieldStyle(.plain)
                         .font(.system(size: 20))
                         .focused($focused)
@@ -70,7 +70,9 @@ struct CommandBarView: View {
     private var suggestions: [Suggestion] {
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty {
-            let recent = store.allTabs.filter { $0.url != nil }.sorted { $0.lastActive > $1.lastActive }
+            let recent = store.allTabs
+                .filter { $0.url != nil && $0.id != store.activeTabID }
+                .sorted { $0.lastActive > $1.lastActive }
             return recent.prefix(6).map(Suggestion.tab)
         }
 
@@ -103,14 +105,26 @@ struct CommandBarView: View {
     }
 
     private func run(_ suggestion: Suggestion) {
-        let newTab = mode == .newTab
         switch suggestion {
-        case .navigate(let url): store.open(url, inNewTab: newTab)
-        case .search(let text): store.open(URLResolver.searchURL(text), inNewTab: newTab)
-        case .tab(let tab): store.select(tab.id)
-        case .history(let entry): store.open(entry.url, inNewTab: newTab)
+        case .navigate(let url): open(url)
+        case .search(let text): open(URLResolver.searchURL(text))
+        case .history(let entry): open(entry.url)
+        case .tab(let tab):
+            if mode == .splitPane {
+                store.splitWithActive(tab.id)
+            } else {
+                store.select(tab.id)
+            }
         }
         dismiss()
+    }
+
+    private func open(_ url: URL) {
+        switch mode {
+        case .newTab: store.open(url, inNewTab: true)
+        case .editCurrent: store.open(url, inNewTab: false)
+        case .splitPane: store.openSplitPane(url)
+        }
     }
 
     private func dismiss() {
