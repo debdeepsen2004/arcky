@@ -2,6 +2,10 @@
 
 A native macOS browser in the spirit of Arc, built with Swift, SwiftUI and WKWebView.
 
+**[Download the latest test build](https://github.com/debdeepsen2004/arcky/releases/latest/download/Arcky.dmg)** · [Website](https://debdeepsen2004.github.io/arcky/)
+
+Arcky is an independent project. It isn't affiliated with or endorsed by The Browser Company.
+
 ## Build and run
 
 Requires macOS 15+ and Xcode 16+ (Swift 6 toolchain).
