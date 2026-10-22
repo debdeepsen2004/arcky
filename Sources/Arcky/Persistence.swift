@@ -9,6 +9,7 @@ struct PersistedState: Codable {
     var favoritesByProfile: [UUID: [BrowserTab]]?
     var boosts: [Boost]?
     var contentBlocking: Bool?
+    var builtInBlocklist: Bool?
     var blockingAllowedSites: [String]?
     var activeSpaceID: UUID
     var selectedTabBySpace: [UUID: UUID]

@@ -13,6 +13,9 @@ final class BrowserStore {
     var favoritesByProfile: [UUID: [BrowserTab]]
     var boosts: [Boost]
     var contentBlocking: Bool
+    /// Whether Arcky's own short list of ad and tracker domains is used (filter list
+    /// subscriptions are separate).
+    var builtInBlocklist: Bool
     /// Sites where the content blocker is turned off.
     var blockingAllowedSites: [String]
     var showingImport = false
@@ -69,6 +72,7 @@ final class BrowserStore {
             favoritesByProfile = saved.favoritesByProfile ?? [profiles[0].id: saved.favorites]
             boosts = saved.boosts ?? []
             contentBlocking = saved.contentBlocking ?? true
+            builtInBlocklist = saved.builtInBlocklist ?? true
             blockingAllowedSites = saved.blockingAllowedSites ?? []
             activeSpaceID = saved.spaces.contains { $0.id == saved.activeSpaceID } ? saved.activeSpaceID : saved.spaces[0].id
             selectedTabBySpace = saved.selectedTabBySpace
@@ -84,6 +88,7 @@ final class BrowserStore {
             favoritesByProfile = [profile.id: []]
             boosts = []
             contentBlocking = true
+            builtInBlocklist = true
             blockingAllowedSites = []
             activeSpaceID = home.id
             selectedTabBySpace = [:]
@@ -97,6 +102,7 @@ final class BrowserStore {
         littleArc.store = self
         pool.installBoosts(boosts)
         updateContentRules()
+        FilterListManager.shared.updateStaleLists()
         startAutoArchive()
         LiveFolderService.shared.start()
         SyncEngine.shared.start()
@@ -1123,19 +1129,35 @@ final class BrowserStore {
     }
 
     /// Recompiles the rule list and installs it; `then` runs once the new rules are in place.
+    func setBuiltInBlocklist(_ enabled: Bool) {
+        builtInBlocklist = enabled
+        updateContentRules()
+        scheduleSave()
+    }
+
+    /// Reinstalls the built-in list and filter list subscriptions (after either changes).
+    func refreshContentRules() {
+        updateContentRules()
+    }
+
+    /// Compiles and installs every active rule list; `then` runs once they're in place.
     private func updateContentRules(then: (() -> Void)? = nil) {
         let enabled = contentBlocking
+        let useBuiltIn = builtInBlocklist
         let allowed = blockingAllowedSites
         Task { [weak self] in
-            var ruleList: WKContentRuleList?
+            var ruleLists: [WKContentRuleList] = []
             if enabled {
-                do {
-                    ruleList = try await ContentBlocker.compile(allowedSites: allowed)
-                } catch {
-                    NSLog("Arcky: content blocker rules failed to compile: \(error)")
+                if useBuiltIn {
+                    do {
+                        if let builtIn = try await ContentBlocker.compile(allowedSites: allowed) { ruleLists.append(builtIn) }
+                    } catch {
+                        NSLog("Arcky: content blocker rules failed to compile: \(error)")
+                    }
                 }
+                ruleLists += await FilterListManager.shared.ruleLists(allowedSites: allowed)
             }
-            self?.pool.setContentRules(ruleList)
+            self?.pool.setContentRules(ruleLists)
             then?()
         }
     }
@@ -1272,6 +1294,7 @@ final class BrowserStore {
             favoritesByProfile: favoritesByProfile,
             boosts: boosts,
             contentBlocking: contentBlocking,
+            builtInBlocklist: builtInBlocklist,
             blockingAllowedSites: blockingAllowedSites,
             activeSpaceID: activeSpaceID,
             selectedTabBySpace: selectedTabBySpace,

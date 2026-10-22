@@ -11,6 +11,8 @@ struct SettingsView: View {
                 .tabItem { Label("Profiles", systemImage: "person.2") }
             BoostsSettings()
                 .tabItem { Label("Boosts", systemImage: "bolt") }
+            BlockingSettings()
+                .tabItem { Label("Blocking", systemImage: "shield.lefthalf.filled") }
             SyncSettings()
                 .tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }
         }
@@ -54,19 +56,6 @@ private struct GeneralSettings: View {
                     }
                 }
                 Text("For the My Pull Requests and Review Requests live folders. Use a token that can read pull requests. Kept in your Keychain.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Section {
-                Toggle("Block ads and trackers", isOn: Binding(get: { store.contentBlocking }, set: { store.setContentBlocking($0) }))
-                if !store.blockingAllowedSites.isEmpty {
-                    LabeledContent("Allowed sites") {
-                        Text(store.blockingAllowedSites.joined(separator: ", "))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-                Text("Applies to pages loaded after a change. Allow a site with the shield in the address bar.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -261,5 +250,104 @@ private struct SyncSettings: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         engine.folder = url
         engine.syncNow()
+    }
+}
+
+/// Content blocking: the built-in list, filter list subscriptions and allowed sites.
+private struct BlockingSettings: View {
+    @Environment(BrowserStore.self) private var store
+    @State private var manager = FilterListManager.shared
+    @State private var customURL = ""
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Block ads and trackers", isOn: Binding(get: { store.contentBlocking }, set: { store.setContentBlocking($0) }))
+                Toggle("Use Arcky's built-in list", isOn: Binding(get: { store.builtInBlocklist }, set: { store.setBuiltInBlocklist($0) }))
+                    .disabled(!store.contentBlocking)
+                if !store.blockingAllowedSites.isEmpty {
+                    LabeledContent("Allowed sites") {
+                        Text(store.blockingAllowedSites.joined(separator: ", "))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+            } footer: {
+                Text("Changes apply to pages loaded afterwards. Allow a site with the shield in the address bar.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Filter Lists") {
+                if manager.subscriptions.isEmpty {
+                    Text("Subscribe to EasyList-style lists for much broader blocking.")
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(manager.subscriptions) { subscription in
+                    FilterListRow(subscription: subscription, manager: manager)
+                }
+                HStack {
+                    Menu("Add List") {
+                        ForEach(FilterListManager.presets, id: \.url) { preset in
+                            let url = URL(string: preset.url)!
+                            Button("\(preset.name) (\(preset.detail))") { manager.subscribe(name: preset.name, url: url) }
+                                .disabled(manager.isSubscribed(to: url))
+                        }
+                    }
+                    .fixedSize()
+                    Spacer()
+                    Button("Update All") { manager.updateAll() }
+                        .disabled(manager.subscriptions.isEmpty)
+                }
+                HStack {
+                    TextField("Or a list’s address", text: $customURL)
+                    Button("Subscribe") {
+                        guard let url = URL(string: customURL.trimmingCharacters(in: .whitespaces)), url.scheme?.hasPrefix("http") == true else { return }
+                        manager.subscribe(name: url.lastPathComponent.isEmpty ? (url.host() ?? "Filter List") : url.lastPathComponent, url: url)
+                        customURL = ""
+                    }
+                    .disabled(customURL.isEmpty)
+                }
+            }
+            .disabled(!store.contentBlocking)
+        }
+        .formStyle(.grouped)
+    }
+}
+
+private struct FilterListRow: View {
+    let subscription: FilterListSubscription
+    let manager: FilterListManager
+
+    var body: some View {
+        HStack(alignment: .top) {
+            Toggle(isOn: Binding(get: { subscription.enabled }, set: { manager.setEnabled(subscription.id, $0) })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(subscription.name)
+                    Group {
+                        if manager.updating.contains(subscription.id) {
+                            Text("Updating…")
+                        } else if let error = subscription.lastError {
+                            Text(error).foregroundStyle(.red)
+                        } else if let date = subscription.lastUpdated {
+                            Text("\(subscription.converted.formatted()) rules · \(subscription.skipped.formatted()) skipped · updated \(date.formatted(.relative(presentation: .named)))")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if manager.updating.contains(subscription.id) {
+                ProgressView().controlSize(.small)
+            } else {
+                Button { manager.update(subscription.id) } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(.borderless)
+                    .help("Update Now")
+            }
+            Button { manager.remove(subscription.id) } label: { Image(systemName: "trash") }
+                .buttonStyle(.borderless)
+                .help("Unsubscribe")
+        }
     }
 }

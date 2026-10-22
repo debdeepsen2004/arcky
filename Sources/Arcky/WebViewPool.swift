@@ -42,9 +42,9 @@ final class WebViewPool: NSObject {
     }
 
     /// Replaces the content blocker rules for all profiles. They apply from the next page load.
-    func setContentRules(_ ruleList: WKContentRuleList?) {
+    func setContentRules(_ ruleLists: [WKContentRuleList]) {
         userContentController.removeAllContentRuleLists()
-        if let ruleList { userContentController.add(ruleList) }
+        for ruleList in ruleLists { userContentController.add(ruleList) }
     }
 
     /// Deletes a profile's cookies, caches and storage. Its web views must already be closed.

@@ -129,8 +129,12 @@ Done:
   Archive and downloads popover show the active space's profile. Clearing is per profile;
   deleting a profile removes its history, Archive and download list
 
-Next:
-- Subscribing to EasyList-style filter lists
+- **Filter list subscriptions** (Settings ▸ Blocking): EasyList, EasyPrivacy, Fanboy's
+  lists, AdGuard Base or any ABP-format URL, converted to WebKit content rules (network
+  rules with third-party/type/domain options, @@ exceptions, ## element hiding) and
+  compiled per list next to the built-in list. Unsupported syntax (regex, redirect, csp,
+  scriptlets, extended CSS) is skipped and counted. EasyList converts to ~84k rules and
+  compiles in seconds. Lists refresh weekly; allowed sites apply to every list
 
 ## Using Ghidra for deeper research
 
