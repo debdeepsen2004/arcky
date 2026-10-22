@@ -134,6 +134,7 @@ final class WebViewPool: NSObject {
         }
         runtimes[id] = nil
         hosts[id] = nil
+        thumbnails[id] = nil
     }
 
     private func makeWebView(configuration: WKWebViewConfiguration, tabID: UUID) -> WKWebView {
@@ -181,6 +182,34 @@ final class WebViewPool: NSObject {
 
     func tabID(of webView: WKWebView) -> UUID? {
         tabIDs[ObjectIdentifier(webView)]
+    }
+
+    // MARK: Thumbnails
+
+    /// Page thumbnails for hover cards, taken as you leave a tab (a web view only draws
+    /// while it's on screen, so this is the last moment a snapshot is possible).
+    private var thumbnails: [UUID: NSImage] = [:]
+
+    func captureThumbnail(tabID: UUID) {
+        guard let webView = webViews[tabID], webView.window != nil else { return }
+        let configuration = WKSnapshotConfiguration()
+        configuration.snapshotWidth = 400
+        webView.takeSnapshot(with: configuration) { [weak self] image, _ in
+            if let image { self?.thumbnails[tabID] = image }
+        }
+    }
+
+    /// The tab's thumbnail. The tab on screen is captured fresh.
+    func thumbnail(for tabID: UUID) async -> NSImage? {
+        if let webView = webViews[tabID], webView.window != nil {
+            let configuration = WKSnapshotConfiguration()
+            configuration.snapshotWidth = 400
+            if let image = try? await webView.takeSnapshot(configuration: configuration) {
+                thumbnails[tabID] = image
+                return image
+            }
+        }
+        return thumbnails[tabID]
     }
 
     // MARK: Picture-in-Picture

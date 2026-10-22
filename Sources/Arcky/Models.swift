@@ -13,6 +13,8 @@ struct BrowserTab: Identifiable, Codable, Hashable {
     var homeURL: URL?
     /// When the tab was last selected or left; drives auto-archive.
     var lastActive = Date()
+    /// Set on items a live folder added since you last looked; cleared when the tab is opened.
+    var isUnread: Bool?
 
     init(url: URL?, title: String? = nil) {
         self.url = url
@@ -40,8 +42,45 @@ struct Folder: Identifiable, Codable, Hashable {
     var name: String
     var isOpen = true
     var children: [SidebarNode] = []
+    /// For live folders: where their tabs come from. Their contents are replaced on refresh.
+    var live: LiveSource?
 
     var allTabs: [BrowserTab] { children.flatMap(\.allTabs) }
+    var unreadCount: Int { allTabs.filter { $0.isUnread == true }.count }
+}
+
+/// What fills a live folder.
+enum LiveSource: Codable, Hashable {
+    case rss(URL)
+    /// Open pull requests of a public repository, "owner/name".
+    case githubRepoPullRequests(String)
+    /// Your open pull requests (needs a GitHub token).
+    case githubMyPullRequests
+    /// Pull requests waiting for your review (needs a GitHub token).
+    case githubReviewRequests
+
+    var defaultName: String {
+        switch self {
+        case .rss(let url): url.host()?.strippingWWW ?? "Feed"
+        case .githubRepoPullRequests(let repo): "\(repo) PRs"
+        case .githubMyPullRequests: "My Pull Requests"
+        case .githubReviewRequests: "Review Requests"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .rss: "dot.radiowaves.up.forward"
+        case .githubRepoPullRequests, .githubMyPullRequests, .githubReviewRequests: "arrow.triangle.pull"
+        }
+    }
+
+    var needsGitHubToken: Bool {
+        switch self {
+        case .githubMyPullRequests, .githubReviewRequests: true
+        case .rss, .githubRepoPullRequests: false
+        }
+    }
 }
 
 /// An entry in the pinned tree: a tab or a folder.

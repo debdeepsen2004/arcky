@@ -7,12 +7,24 @@ struct TabRow: View {
     @Environment(BrowserStore.self) private var store
     @Environment(\.spaceTheme) private var theme
     @State private var hovering = false
+    @State private var showingHoverCard = false
+    @State private var hoverCardTask: Task<Void, Never>?
+    @AppStorage("hoverCards") private var hoverCardsEnabled = true
 
     var body: some View {
         let selected = store.activeTabID == tab.id
         let multiSelected = store.multiSelection.contains(tab.id)
         HStack(spacing: 8) {
             Favicon(tab: tab, size: 16)
+                .overlay(alignment: .topTrailing) {
+                    if tab.isUnread == true {
+                        Circle()
+                            .fill(theme.accent)
+                            .frame(width: 7, height: 7)
+                            .offset(x: 3, y: -3)
+                            .help("New")
+                    }
+                }
             if store.renamingID == tab.id {
                 InlineRenameField(initial: tab.displayTitle) { store.renameTab(tab.id, to: $0) }
             } else {
@@ -54,8 +66,26 @@ struct TabRow: View {
             }
         }
         .contentShape(Rectangle())
-        .onHover { hovering = $0 }
-        .onTapGesture { store.handleClick(on: tab.id, modifiers: currentClickModifiers()) }
+        .onHover { inside in
+            hovering = inside
+            hoverCardTask?.cancel()
+            if inside {
+                hoverCardTask = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(700))
+                    guard !Task.isCancelled, hoverCardsEnabled, store.renamingID != tab.id else { return }
+                    showingHoverCard = true
+                }
+            } else {
+                showingHoverCard = false
+            }
+        }
+        .popover(isPresented: $showingHoverCard, arrowEdge: .trailing) {
+            HoverCard(tab: tab)
+        }
+        .onTapGesture {
+            showingHoverCard = false
+            store.handleClick(on: tab.id, modifiers: currentClickModifiers())
+        }
         .draggable(dragPayload(for: tab.id, store: store)) {
             let count = store.actionTargets(for: tab.id).count
             Label(count > 1 ? "\(count) tabs" : tab.displayTitle, systemImage: count > 1 ? "square.stack" : "globe").padding(6)
@@ -205,4 +235,51 @@ struct Favicon: View {
 @MainActor
 func currentClickModifiers() -> NSEvent.ModifierFlags {
     NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags
+}
+
+/// Arc's hover card: a bigger look at a sidebar tab, with how the page looked when you left it.
+private struct HoverCard: View {
+    let tab: BrowserTab
+    @Environment(BrowserStore.self) private var store
+    @State private var thumbnail: NSImage?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let thumbnail {
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 300, height: 170, alignment: .top)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.primary.opacity(0.08)))
+            }
+            HStack(alignment: .top, spacing: 8) {
+                Favicon(tab: tab, size: 18)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(tab.displayTitle)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(2)
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(store.activeTabID == tab.id ? "Open now" : "Viewed \(tab.lastActive.formatted(.relative(presentation: .named)))")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(12)
+        .frame(width: 324, alignment: .leading)
+        .task { thumbnail = await store.pool.thumbnail(for: tab.id) }
+    }
+
+    private var subtitle: String {
+        if let document = ArckyDocument(url: tab.url) { return document.kindName }
+        guard let url = tab.url else { return "New Tab" }
+        let host = url.host()?.strippingWWW ?? ""
+        let path = url.path(percentEncoded: false)
+        return path.isEmpty || path == "/" ? host : host + path
+    }
 }

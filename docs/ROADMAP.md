@@ -105,8 +105,16 @@ Done:
 - Notes and Easels are sidebar items like tabs (`arcky://note/…`, `arcky://easel/…`), so
   pinning, folders, Split View, multi-select and the Archive all work on them
 
+- **Live folders** (File ▸ New Live Folder…): pinned folders filled from an RSS/Atom feed
+  ("Use This Page's Feed" finds the current site's), a public repo's open pull requests,
+  or, with a GitHub token in Settings (kept in the Keychain), your PRs and review requests.
+  Refresh on launch, every 15 minutes and on demand; new items get an unread dot and the
+  folder a count; tabs already open keep their page across refreshes
+- **Hover cards**: resting on a sidebar tab shows a thumbnail of the page as you left it,
+  its title, address and when you last viewed it (Settings can turn them off)
+
 Next:
-- Live folders; hover cards; "Instant Links"
+- "Instant Links"
 - Sync (CloudKit); history/downloads per profile; subscribing to EasyList-style filter lists
 
 ## Using Ghidra for deeper research

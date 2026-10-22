@@ -22,6 +22,8 @@ struct BrowserCommands: Commands {
             Button("Import…") { store.showingImport = true }
             Button("New Folder") { store.newFolder() }
                 .keyboardShortcut("n", modifiers: [.command, .control])
+            Button("New Live Folder…") { store.showingNewLiveFolder = true }
+            Button("Refresh Live Folders") { LiveFolderService.shared.refreshAll() }
             Divider()
             Button("Reopen Closed Tab") { store.reopenClosedTab() }
                 .keyboardShortcut("t", modifiers: [.command, .shift])

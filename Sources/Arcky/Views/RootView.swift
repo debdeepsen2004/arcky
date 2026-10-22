@@ -64,6 +64,9 @@ struct RootView: View {
         .sheet(isPresented: Binding(get: { store.showingImport }, set: { store.showingImport = $0 })) {
             ImportView().environment(store)
         }
+        .sheet(isPresented: Binding(get: { store.showingNewLiveFolder }, set: { store.showingNewLiveFolder = $0 })) {
+            NewLiveFolderView().environment(store)
+        }
         .sheet(item: Binding(get: { store.editingBoostID.map(IdentifiedID.init) }, set: { store.editingBoostID = $0?.id })) { item in
             BoostEditorView(boostID: item.id).environment(store)
         }

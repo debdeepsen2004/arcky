@@ -98,6 +98,7 @@ final class BrowserStore {
         pool.installBoosts(boosts)
         updateContentRules()
         startAutoArchive()
+        LiveFolderService.shared.start()
     }
 
     private static func makeDefaultProfile() -> Profile {
@@ -277,6 +278,8 @@ final class BrowserStore {
         // Auto-archive counts from when a tab was last left, so stamp the tab being left too.
         if let previous, previous != id {
             updateTab(previous) { $0.lastActive = Date() }
+            // Remember how the page looked, for its hover card.
+            pool.captureThumbnail(tabID: previous)
         }
         // Coming back to a tab ends its Picture-in-Picture.
         if miniPlayer.tabID == id { miniPlayer.close() }
@@ -284,7 +287,10 @@ final class BrowserStore {
 
         if let spaceID = spaceID(of: location) { activeSpaceID = spaceID }
         selectedTabBySpace[activeSpaceID] = id
-        updateTab(id) { $0.lastActive = Date() }
+        updateTab(id) {
+            $0.lastActive = Date()
+            $0.isUnread = nil
+        }
 
         // Leaving a playing video pops it out, unless it stays visible in the same split.
         if let previous, previous != id, split(containing: id)?.tabIDs.contains(previous) != true {
@@ -363,6 +369,8 @@ final class BrowserStore {
     /// Moves a tab or folder into `destination`, before `beforeID` (or at the end).
     func move(_ id: UUID, to destination: TabLocation, before beforeID: UUID? = nil) {
         guard id != beforeID, let (source, sourceIndex) = location(of: id) else { return }
+        // A live folder's contents come from its feed; nothing can be dropped into it.
+        if case .folder(let target) = destination, folder(target)?.live != nil { return }
         var node = nodes(in: source)[sourceIndex]
         switch node {
         case .folder(let folder):
@@ -435,6 +443,73 @@ final class BrowserStore {
         guard !order.isEmpty else { return }
         let current = activeTabID.flatMap { id in order.firstIndex { $0.id == id } } ?? -1
         select(order[(current + delta + order.count) % order.count].id)
+    }
+
+    // MARK: - Live folders
+
+    var showingNewLiveFolder = false
+
+    /// Every live folder in every space.
+    var liveFolders: [Folder] {
+        func collect(_ nodes: [SidebarNode]) -> [Folder] {
+            nodes.flatMap { node -> [Folder] in
+                guard case .folder(let folder) = node else { return [] }
+                return (folder.live == nil ? [] : [folder]) + collect(folder.children)
+            }
+        }
+        return spaces.flatMap { collect($0.pinned) }
+    }
+
+    /// Adds a live folder to the active space's pinned section and fills it.
+    func createLiveFolder(_ source: LiveSource, name: String? = nil) {
+        var folder = Folder(name: name ?? source.defaultName)
+        folder.live = source
+        modifyNodes(.pinned(activeSpaceID)) { $0.append(.folder(folder)) }
+        scheduleSave()
+        LiveFolderService.shared.refresh(folder.id)
+    }
+
+    /// Replaces a live folder's tabs with fresh items. Tabs for items still in the feed keep
+    /// their identity (and loaded page); new items are marked unread, except on the first fill.
+    func applyLiveItems(_ items: [LiveItem], toFolder id: UUID) {
+        guard let folder = folder(id) else { return }
+        let firstFill = folder.children.isEmpty
+        var existing: [URL: BrowserTab] = [:]
+        for tab in folder.allTabs {
+            if let key = tab.homeURL ?? tab.url { existing[key] = tab }
+        }
+        var seen = Set<URL>()
+        let tabs: [BrowserTab] = items.compactMap { item in
+            guard seen.insert(item.url).inserted else { return nil }
+            if var tab = existing[item.url] {
+                // Opened items show their page's title; others follow the feed (e.g. a renamed PR).
+                if pool.existingWebView(for: tab.id) == nil { tab.title = item.title }
+                return tab
+            }
+            var tab = BrowserTab(url: item.url, title: item.title)
+            tab.homeURL = item.url
+            tab.isUnread = firstFill ? nil : true
+            return tab
+        }
+        let kept = Set(tabs.map(\.id))
+        for tab in folder.allTabs where !kept.contains(tab.id) {
+            unload(tab.id)
+            for (space, selected) in selectedTabBySpace where selected == tab.id {
+                selectedTabBySpace[space] = nil
+            }
+        }
+        updateFolder(id) { $0.children = tabs.map(SidebarNode.tab) }
+    }
+
+    /// Finds the active page's RSS or Atom feed, if it advertises one.
+    func detectFeedForActivePage() async -> URL? {
+        guard let webView = pool.existingWebView(for: activeTabID) else { return nil }
+        let script = """
+        const link = document.querySelector('link[rel~="alternate"][type="application/rss+xml"], link[rel~="alternate"][type="application/atom+xml"]');
+        return link ? link.href : null;
+        """
+        let result = try? await webView.callAsyncJavaScript(script, contentWorld: .defaultClient)
+        return (result as? String).flatMap(URL.init(string:))
     }
 
     // MARK: - Notes & Easels

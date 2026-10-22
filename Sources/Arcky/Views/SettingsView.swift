@@ -19,6 +19,9 @@ struct SettingsView: View {
 private struct GeneralSettings: View {
     @Environment(BrowserStore.self) private var store
     @AppStorage("autoPictureInPicture") private var autoPictureInPicture = true
+    @AppStorage("hoverCards") private var hoverCards = true
+    @State private var githubToken = GitHubToken.load() ?? ""
+    @State private var tokenSaved = GitHubToken.load() != nil
     @State private var isDefaultBrowser = GeneralSettings.checkDefaultBrowser()
 
     var body: some View {
@@ -33,6 +36,24 @@ private struct GeneralSettings: View {
             }
             Section {
                 Toggle("Picture-in-Picture when leaving a playing video", isOn: $autoPictureInPicture)
+                Toggle("Show hover cards for sidebar tabs", isOn: $hoverCards)
+            }
+            Section {
+                LabeledContent("GitHub token") {
+                    HStack {
+                        SecureField("ghp_…", text: $githubToken)
+                            .frame(width: 200)
+                        Button(tokenSaved ? "Saved" : "Save") {
+                            GitHubToken.save(githubToken)
+                            tokenSaved = true
+                            LiveFolderService.shared.refreshAll()
+                        }
+                        .disabled(tokenSaved)
+                    }
+                }
+                Text("For the My Pull Requests and Review Requests live folders. Use a token that can read pull requests. Kept in your Keychain.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section {
                 Toggle("Block ads and trackers", isOn: Binding(get: { store.contentBlocking }, set: { store.setContentBlocking($0) }))
@@ -64,6 +85,7 @@ private struct GeneralSettings: View {
             }
         }
         .formStyle(.grouped)
+        .onChange(of: githubToken) { tokenSaved = false }
     }
 
     private static func checkDefaultBrowser() -> Bool {
