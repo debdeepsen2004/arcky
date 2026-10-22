@@ -14,6 +14,8 @@ struct CommandBarView: View {
     enum Suggestion: Hashable {
         case navigate(URL)
         case search(String)
+        /// Instant Links: straight to the top result (or the top N).
+        case instant(String)
         case tab(BrowserTab)
         case history(HistoryEntry)
     }
@@ -33,7 +35,7 @@ struct CommandBarView: View {
                         .textFieldStyle(.plain)
                         .font(.system(size: 20))
                         .focused($focused)
-                        .onSubmit { if items.indices.contains(selection) { run(items[selection]) } }
+                        .onSubmit { submit(items) }
                 }
                 .padding(.horizontal, 18)
                 .frame(height: 56)
@@ -82,6 +84,7 @@ struct CommandBarView: View {
             results.append(.navigate(url))
         } else {
             results.append(.search(text))
+            results.append(.instant(text))
         }
 
         let needle = text.lowercased()
@@ -104,10 +107,22 @@ struct CommandBarView: View {
         return results
     }
 
+    /// Return runs the highlighted row; ⇧Return on a search goes straight to the top result.
+    private func submit(_ items: [Suggestion]) {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shift = NSApp.currentEvent?.modifierFlags.contains(.shift) == true
+        if shift, !text.isEmpty, !URLResolver.isLikelyURL(text), mode != .splitPane {
+            run(.instant(text))
+        } else if items.indices.contains(selection) {
+            run(items[selection])
+        }
+    }
+
     private func run(_ suggestion: Suggestion) {
         switch suggestion {
         case .navigate(let url): open(url)
         case .search(let text): open(URLResolver.searchURL(text))
+        case .instant(let text): store.openInstantLinks(text, inNewTab: mode != .editCurrent)
         case .history(let entry): open(entry.url)
         case .tab(let tab):
             if mode == .splitPane {
@@ -178,6 +193,7 @@ private struct SuggestionRow: View {
         switch item {
         case .navigate: Image(systemName: "globe")
         case .search: Image(systemName: "magnifyingglass")
+        case .instant: Image(systemName: "bolt.fill")
         case .tab(let tab): Favicon(tab: tab, size: 16)
         case .history(let entry): Favicon(tab: BrowserTab(url: entry.url), size: 16)
         }
@@ -187,6 +203,10 @@ private struct SuggestionRow: View {
         switch item {
         case .navigate(let url): url.absoluteString
         case .search(let text): text
+        case .instant(let text):
+            InstantLinks.parse(text).count > 1
+                ? "Open the top \(InstantLinks.parse(text).count) results for “\(InstantLinks.parse(text).query)”"
+                : "Go to the top result for “\(text)”"
         case .tab(let tab): tab.displayTitle
         case .history(let entry): entry.title.isEmpty ? entry.url.absoluteString : entry.title
         }
@@ -194,7 +214,7 @@ private struct SuggestionRow: View {
 
     private var subtitle: String? {
         switch item {
-        case .navigate, .search: nil
+        case .navigate, .search, .instant: nil
         case .tab(let tab): tab.url?.host()?.strippingWWW
         case .history(let entry): entry.url.host()?.strippingWWW
         }
@@ -204,6 +224,7 @@ private struct SuggestionRow: View {
         switch item {
         case .navigate: "Open"
         case .search: "Search Google"
+        case .instant: "Instant Link ⇧↩"
         case .tab: "Switch to Tab"
         case .history: "History"
         }

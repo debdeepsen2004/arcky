@@ -113,8 +113,11 @@ Done:
 - **Hover cards**: resting on a sidebar tab shows a thumbnail of the page as you left it,
   its title, address and when you last viewed it (Settings can turn them off)
 
+- **Instant Links**: ⇧↩ on a search in the command bar (or its "Go to the top result" row)
+  opens the top DuckDuckGo result directly; "top 5 …" / "3 …" opens that many results as
+  tabs. Arc used an AI service for this; Arcky reads search results, no account needed
+
 Next:
-- "Instant Links"
 - Sync (CloudKit); history/downloads per profile; subscribing to EasyList-style filter lists
 
 ## Using Ghidra for deeper research

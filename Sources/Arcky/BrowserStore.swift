@@ -445,6 +445,40 @@ final class BrowserStore {
         select(order[(current + delta + order.count) % order.count].id)
     }
 
+    // MARK: - Instant Links
+
+    /// Goes straight to the top result for `text`, or opens the top N as tabs when it asks
+    /// for several ("top 5 …"). A single result opens in the current tab unless `inNewTab`.
+    func openInstantLinks(_ text: String, inNewTab: Bool) {
+        let (count, query) = InstantLinks.parse(text)
+        guard !query.isEmpty else { return }
+        if count == 1 {
+            // Show the tab at once; its page arrives when the result does.
+            let tabID = (!inNewTab ? activeTabID : nil) ?? newTab(nil)
+            updateTab(tabID) { $0.title = "Finding “\(query)”…" }
+            Task {
+                let url = (try? await InstantLinks.results(for: query, limit: 1))?.first ?? InstantLinks.luckyURL(query)
+                updateTab(tabID) {
+                    $0.url = url
+                    $0.title = ""
+                }
+                pool.load(url, tabID: tabID)
+            }
+        } else {
+            Task {
+                let urls = (try? await InstantLinks.results(for: query, limit: count)) ?? []
+                guard !urls.isEmpty else {
+                    newTab(InstantLinks.luckyURL(query))
+                    return
+                }
+                // New tabs go on top, so add them last-first to keep the results in order.
+                var first: UUID?
+                for url in urls.reversed() { first = newTab(url, select: false) }
+                if let first { select(first) }
+            }
+        }
+    }
+
     // MARK: - Live folders
 
     var showingNewLiveFolder = false

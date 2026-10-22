@@ -26,6 +26,7 @@ State is saved to `~/Library/Application Support/Arcky/state.json`.
 | Action | Keys |
 | --- | --- |
 | New tab / command bar | ⌘T |
+| Instant Link (top result) | ⇧↩ in the command bar |
 | Edit URL | ⌘L |
 | Close tab / reopen | ⌘W / ⇧⌘T |
 | Pin / unpin | ⌘D |
