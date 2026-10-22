@@ -40,8 +40,9 @@ struct SidebarView: View {
         }
         .background(SidebarFrameReporter())
         .padding(.horizontal, SidebarView.horizontalPadding)
-        // The top row's middle sits level with the traffic lights.
-        .padding(.top, max(4, WindowChrome.shared.trafficLightsCenterY - SidebarView.topBarHeight / 2))
+        // The top row's middle sits level with the traffic lights. The lights can sit higher
+        // than half the row's height, so the inset may be slightly negative.
+        .padding(.top, max(-8, WindowChrome.shared.trafficLightsCenterY - SidebarView.topBarHeight / 2))
         .padding(.bottom, 10)
         .foregroundStyle(theme.primaryText)
     }
