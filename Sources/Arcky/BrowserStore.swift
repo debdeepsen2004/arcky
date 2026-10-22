@@ -19,6 +19,8 @@ final class BrowserStore {
     /// Sites where the content blocker is turned off.
     var blockingAllowedSites: [String]
     var showingImport = false
+    /// The first-run guide; shown until it has been completed once.
+    var showingOnboarding = !UserDefaults.standard.bool(forKey: OnboardingView.completedKey)
     /// Tabs picked with ⌘- or ⇧-click, acted on together. Separate from the active tab.
     var multiSelection: Set<UUID> = []
     /// Whether the last space switch moved right, for the sidebar's slide direction.

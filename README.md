@@ -14,6 +14,20 @@ open build/Arcky.app
 
 State is saved to `~/Library/Application Support/Arcky/state.json`.
 
+## Sharing a build
+
+```bash
+scripts/package.sh
+```
+
+Builds a universal (Apple Silicon + Intel) release and writes `dist/Arcky-<version>.dmg`
+(drag-to-Applications, with install notes), a fixed-name `dist/Arcky.dmg` for "latest
+release" links, and a zip. The app is signed ad hoc (no Developer ID), so on first launch
+testers approve it once in System Settings ▸ Privacy & Security ▸ Open Anyway.
+`docs/index.html` is the download page (for GitHub Pages).
+
+The icon is drawn by `swift scripts/make-icon.swift`.
+
 ## Layout
 
 - `Sources/Arcky/BrowserStore.swift`: all sidebar state and actions (spaces, tabs, history)

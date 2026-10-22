@@ -67,6 +67,10 @@ struct BrowserCommands: Commands {
             .keyboardShortcut("p", modifiers: [.command, .control])
         }
 
+        CommandGroup(replacing: .help) {
+            Button("Welcome to Arcky") { store.showingOnboarding = true }
+        }
+
         CommandMenu("Navigate") {
             Button("Open Location") { store.openCommandBar(.editCurrent) }
                 .keyboardShortcut("l")

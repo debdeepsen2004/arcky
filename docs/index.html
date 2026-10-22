@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arcky: a calm browser for the Mac</title>
+<meta name="description" content="Arcky is a native Mac browser with spaces, pinned tabs, split view, notes and more. Test build.">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<style>
+  :root {
+    --bg: #0d0b14;
+    --panel: #16131f;
+    --panel-2: #1d1929;
+    --line: rgba(255,255,255,0.08);
+    --text: #f4f1fa;
+    --muted: #a49db3;
+    --indigo: #5b5cf6;
+    --fuchsia: #d946ef;
+    --orange: #f97316;
+    --gradient: linear-gradient(120deg, var(--indigo), var(--fuchsia) 55%, var(--orange));
+    --radius: 18px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 17px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: inherit; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+  /* Ambient glow behind the hero */
+  .glow {
+    position: absolute; inset: -200px 0 auto 0; height: 760px; pointer-events: none;
+    background:
+      radial-gradient(600px 380px at 20% 30%, rgba(91,92,246,0.35), transparent 70%),
+      radial-gradient(520px 360px at 75% 25%, rgba(217,70,239,0.28), transparent 70%),
+      radial-gradient(460px 300px at 60% 70%, rgba(249,115,22,0.18), transparent 70%);
+    filter: blur(10px);
+  }
+
+  nav { position: relative; display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; text-decoration: none; }
+  .brand img { width: 32px; height: 32px; }
+  nav .links { display: flex; gap: 24px; font-size: 15px; color: var(--muted); }
+  nav .links a { text-decoration: none; }
+  nav .links a:hover { color: var(--text); }
+
+  header { position: relative; text-align: center; padding: 64px 0 40px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
+    background: rgba(255,255,255,0.06); border: 1px solid var(--line); color: var(--muted); font-size: 14px;
+  }
+  .badge b { background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  h1 { font-size: clamp(42px, 7vw, 76px); line-height: 1.03; letter-spacing: -0.035em; margin: 22px auto 18px; max-width: 900px; }
+  h1 span { background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lede { color: var(--muted); font-size: 20px; max-width: 640px; margin: 0 auto 34px; }
+  .cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .button {
+    display: inline-flex; align-items: center; gap: 10px; padding: 14px 24px; border-radius: 14px;
+    font-weight: 650; text-decoration: none; font-size: 17px; transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .button.primary { background: var(--gradient); color: white; box-shadow: 0 10px 40px rgba(217,70,239,0.35); }
+  .button.primary:hover { transform: translateY(-2px); box-shadow: 0 14px 50px rgba(217,70,239,0.45); }
+  .button.secondary { background: rgba(255,255,255,0.06); border: 1px solid var(--line); }
+  .button.secondary:hover { background: rgba(255,255,255,0.1); }
+  .fine { color: var(--muted); font-size: 14px; margin-top: 16px; }
+
+  /* Drawn browser mockup */
+  .mock {
+    position: relative; margin: 56px auto 0; max-width: 980px; aspect-ratio: 16 / 9.4;
+    border-radius: 16px; padding: 10px; display: grid; grid-template-columns: 23% 1fr; gap: 10px;
+    background: linear-gradient(140deg, #3d3c8f, #7e2f8f 55%, #a5532b);
+    box-shadow: 0 40px 120px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.08);
+  }
+  .side { display: flex; flex-direction: column; gap: 7px; padding: 8px 4px; }
+  .lights { display: flex; gap: 6px; margin: 2px 4px 8px; }
+  .lights i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,0.35); }
+  .lights i:nth-child(1) { background: #ff5f57; } .lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+  .pill { height: 26px; border-radius: 8px; background: rgba(255,255,255,0.14); }
+  .favs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 4px 0; }
+  .favs b { aspect-ratio: 1.2; border-radius: 8px; background: rgba(255,255,255,0.16); }
+  .row { height: 24px; border-radius: 7px; display: flex; align-items: center; gap: 7px; padding: 0 8px; font-size: 11px; color: rgba(255,255,255,0.85); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: rgba(255,255,255,0.55); flex: none; }
+  .row.on { background: rgba(255,255,255,0.88); color: #2b2440; }
+  .row.on::before { background: var(--fuchsia); }
+  .sep { height: 1px; background: rgba(255,255,255,0.2); margin: 4px 6px; }
+  .spaces { margin-top: auto; display: flex; justify-content: center; gap: 8px; font-size: 13px; }
+  .page { border-radius: 10px; background: #fbfaff; overflow: hidden; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px; }
+  .pane { border-radius: 7px; background: #f1eff7; padding: 14px; display: flex; flex-direction: column; gap: 9px; }
+  .pane.focus { outline: 2px solid var(--fuchsia); }
+  .pane h4 { margin: 0; height: 14px; width: 60%; border-radius: 4px; background: #2b2440; opacity: 0.85; }
+  .pane p { margin: 0; height: 8px; border-radius: 4px; background: #cfcadd; }
+  .pane p:nth-child(3) { width: 85%; } .pane p:nth-child(4) { width: 70%; }
+  .pane .hero-img { flex: 1; border-radius: 6px; background: linear-gradient(135deg, #c7d2fe, #f5d0fe 60%, #fed7aa); }
+
+  section { padding: 100px 0 0; }
+  h2 { font-size: clamp(30px, 4vw, 44px); letter-spacing: -0.025em; margin: 0 0 12px; text-align: center; }
+  .sub { text-align: center; color: var(--muted); max-width: 620px; margin: 0 auto 48px; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px;
+    transition: border-color .2s ease, transform .2s ease;
+  }
+  .card:hover { border-color: rgba(217,70,239,0.45); transform: translateY(-2px); }
+  .card .ico { font-size: 26px; margin-bottom: 10px; }
+  .card h3 { margin: 0 0 6px; font-size: 18px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  kbd {
+    font: 600 13px -apple-system, sans-serif; padding: 2px 7px; border-radius: 6px;
+    background: rgba(255,255,255,0.1); border: 1px solid var(--line);
+  }
+
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; counter-reset: step; }
+  .step { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; position: relative; }
+  .step::before {
+    counter-increment: step; content: counter(step);
+    display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
+    background: var(--gradient); font-weight: 700; margin-bottom: 14px;
+  }
+  .step h3 { margin: 0 0 6px; font-size: 17px; }
+  .step p { margin: 0; color: var(--muted); font-size: 15px; }
+  .note {
+    margin-top: 18px; padding: 16px 20px; border-radius: 14px; background: var(--panel-2); border: 1px solid var(--line);
+    color: var(--muted); font-size: 15px;
+  }
+  .note code { color: var(--text); background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 6px; font-size: 14px; }
+
+  .faq { max-width: 760px; margin: 0 auto; }
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; margin-bottom: 12px; }
+  summary { cursor: pointer; font-weight: 600; list-style: none; }
+  summary::after { content: "+"; float: right; color: var(--muted); }
+  details[open] summary::after { content: "–"; }
+  details p { color: var(--muted); margin: 10px 0 0; font-size: 15px; }
+
+  .final { text-align: center; padding: 110px 0 90px; }
+  footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: repeat(2, 1fr); }
+    .steps { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 600px) {
+    .wrap { padding: 0 16px; }
+    nav .links { display: none; }
+    header { padding-top: 32px; }
+    .lede { font-size: 18px; }
+    .grid, .steps { grid-template-columns: 1fr; }
+    .mock { grid-template-columns: 30% 1fr; }
+    .page { grid-template-columns: 1fr; }
+    .page .pane:last-child { display: none; }
+    section { padding-top: 72px; }
+  }
+</style>
+</head>
+<body>
+<div class="glow"></div>
+
+<div class="wrap">
+  <nav>
+    <a class="brand" href="#"><img src="assets/icon.png" alt="">Arcky</a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#faq">FAQ</a>
+      <a href="REPO_URL">GitHub</a>
+    </div>
+  </nav>
+
+  <header>
+    <span class="badge"><b>Beta 0.9</b> · a test build for friends</span>
+    <h1>The calm browser, <span>rebuilt natively</span> for the Mac.</h1>
+    <p class="lede">Spaces, pinned tabs that stay put, Today tabs that tidy themselves away, and a command bar that gets you anywhere. Light, fast and made in Swift.</p>
+    <div class="cta">
+      <a class="button primary" href="REPO_URL/releases/latest/download/Arcky.dmg">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg>
+        Download for macOS
+      </a>
+      <a class="button secondary" href="#install">How to install</a>
+    </div>
+    <p class="fine">macOS 15 Sequoia or later · Apple Silicon &amp; Intel · free</p>
+
+    <div class="mock" aria-hidden="true">
+      <div class="side">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <div class="pill"></div>
+        <div class="favs"><b></b><b></b><b></b><b></b></div>
+        <div class="row">Research</div>
+        <div class="row">Design system</div>
+        <div class="sep"></div>
+        <div class="row on">Weekend plan</div>
+        <div class="row">Swift concurrency</div>
+        <div class="row">Moodboard</div>
+        <div class="spaces"><span>🏠</span><span>💼</span><span>🎨</span><span>📚</span></div>
+      </div>
+      <div class="page">
+        <div class="pane focus"><h4></h4><p></p><p></p><p></p><div class="hero-img"></div></div>
+        <div class="pane"><h4></h4><p></p><p></p><p></p><div class="hero-img"></div></div>
+      </div>
+    </div>
+  </header>
+
+  <section id="features">
+    <h2>Everything you liked, and then some</h2>
+    <p class="sub">Arcky brings the sidebar-first way of browsing to a small, native Mac app.</p>
+    <div class="grid">
+      <div class="card"><div class="ico">🗂️</div><h3>Spaces &amp; profiles</h3><p>A space for each part of your life, each with its own colours. Profiles keep logins, history and downloads apart.</p></div>
+      <div class="card"><div class="ico">⌘</div><h3>Command bar</h3><p><kbd>⌘T</kbd> for anything: sites, searches, open tabs. <kbd>⇧↩</kbd> jumps straight to the top result.</p></div>
+      <div class="card"><div class="ico">🪟</div><h3>Split View &amp; Peek</h3><p>Up to four tabs side by side. Links from pinned tabs open in a floating Peek.</p></div>
+      <div class="card"><div class="ico">🗒️</div><h3>Notes &amp; Easels</h3><p>Write notes and sketch on canvases right in the sidebar. Capture any page onto an Easel.</p></div>
+      <div class="card"><div class="ico">⚡️</div><h3>Boosts</h3><p>Restyle any site with your own CSS, fonts and JavaScript, or zap away the bits you don't want.</p></div>
+      <div class="card"><div class="ico">🛡️</div><h3>Built-in blocking</h3><p>Trackers blocked out of the box. Add EasyList and friends for more.</p></div>
+      <div class="card"><div class="ico">📡</div><h3>Live folders</h3><p>Folders that fill themselves from RSS feeds or your GitHub pull requests.</p></div>
+      <div class="card"><div class="ico">🪄</div><h3>Little Arc &amp; PiP</h3><p>Links from other apps open in small windows; videos float when you switch tabs.</p></div>
+      <div class="card"><div class="ico">📥</div><h3>Bring your stuff</h3><p>One-click import from Arc, Chrome, Brave, Edge or any bookmarks file. Sync between Macs via iCloud Drive.</p></div>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Installing takes a minute</h2>
+    <p class="sub">Arcky is a test build, so it isn't notarized by Apple yet. macOS asks you to approve it once.</p>
+    <div class="steps">
+      <div class="step"><h3>Download</h3><p>Get <b>Arcky.dmg</b> and open it.</p></div>
+      <div class="step"><h3>Drag to Applications</h3><p>Drop Arcky onto the Applications folder in the window that opens.</p></div>
+      <div class="step"><h3>Open it once</h3><p>macOS will say it can't verify Arcky. Click <b>Done</b>, not Move to Trash.</p></div>
+      <div class="step"><h3>Approve</h3><p>In <b>System Settings ▸ Privacy &amp; Security</b>, scroll down and click <b>Open Anyway</b>.</p></div>
+    </div>
+    <div class="note">
+      Comfortable with Terminal? This does steps 3 and 4 in one go:
+      <code>xattr -dr com.apple.quarantine /Applications/Arcky.app</code>
+    </div>
+  </section>
+
+  <section id="faq">
+    <h2>Questions</h2>
+    <p class="sub">The short answers.</p>
+    <div class="faq">
+      <details><summary>Is this Arc?</summary><p>No. Arcky is an independent project inspired by Arc's ideas. It isn't affiliated with or endorsed by The Browser Company.</p></details>
+      <details><summary>Why does macOS warn me about it?</summary><p>Apps from outside the App Store need to be notarized with a paid Apple developer account for macOS to recognise them. This test build isn't, so you approve it once by hand (see Install).</p></details>
+      <details><summary>Where is my data kept?</summary><p>On your Mac. If you turn on Sync, Arcky also keeps a copy in your own iCloud Drive (or a folder you choose). Nothing is sent anywhere else.</p></details>
+      <details><summary>Do Chrome extensions work?</summary><p>Not yet. Arcky uses Apple's WebKit engine (like Safari), which keeps it light but doesn't run Chrome extensions. Boosts and built-in blocking cover the common cases.</p></details>
+      <details><summary>Which Macs can run it?</summary><p>Any Mac with macOS 15 Sequoia or later, Apple Silicon or Intel.</p></details>
+      <details><summary>Found a bug?</summary><p>Tell whoever sent you Arcky, or open an issue on <a href="REPO_URL/issues">GitHub</a>. Thank you for testing!</p></details>
+    </div>
+  </section>
+
+  <div class="final">
+    <h2>Ready to try it?</h2>
+    <p class="sub">It's free, small (under 5 MB) and takes a minute to set up.</p>
+    <a class="button primary" href="REPO_URL/releases/latest/download/Arcky.dmg">Download Arcky</a>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <span>Arcky · beta test build</span>
+    <span>Not affiliated with The Browser Company.</span>
+  </div>
+</footer>
+</body>
+</html>
