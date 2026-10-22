@@ -113,4 +113,6 @@ enum NoiseTexture {
 
 extension EnvironmentValues {
     @Entry var spaceTheme = SpaceTheme(hue: 0.6, dark: false)
+    /// The sidebar is floating over the page (hover-revealed while hidden).
+    @Entry var floatingSidebar = false
 }

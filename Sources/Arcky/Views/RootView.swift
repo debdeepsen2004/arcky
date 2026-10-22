@@ -37,6 +37,7 @@ struct RootView: View {
                     // or dark appearance, tinted with the space's colour.
                     SidebarView()
                         .environment(\.spaceTheme, theme.appearance(dark: colorScheme == .dark))
+                        .environment(\.floatingSidebar, true)
                         .frame(width: sidebarWidth)
                         .floatingSidebarSurface(RoundedRectangle(cornerRadius: 16, style: .continuous), tint: theme.accent)
                         .shadow(color: .black.opacity(0.3), radius: 16, x: 4)
@@ -55,7 +56,8 @@ struct RootView: View {
         .animation(.spring(duration: 0.25), value: peeking)
         .animation(.easeInOut(duration: 0.25), value: store.activeSpaceID)
         .onChange(of: store.sidebarVisible) { peeking = false }
-        .background(WindowConfigurator(showsTrafficLights: store.sidebarVisible || peeking))
+        // While peeking, the floating sidebar draws its own traffic lights so they move with it.
+        .background(WindowConfigurator(showsTrafficLights: store.sidebarVisible))
         .sheet(isPresented: Binding(get: { store.showingArchive }, set: { store.showingArchive = $0 })) {
             ArchiveView().environment(store)
         }
@@ -339,6 +341,11 @@ final class WindowChrome {
     private(set) var trafficLightsCenterY: CGFloat = 22
     /// From the window's left edge to the right edge of the zoom (green) button.
     private(set) var trafficLightsMaxX: CGFloat = 70
+    /// From the window's left edge to the left edge of the close (red) button.
+    private(set) var trafficLightsMinX: CGFloat = 20
+    /// One button's size, and the distance from one button's left edge to the next.
+    private(set) var trafficLightSize: CGSize = CGSize(width: 14, height: 16)
+    private(set) var trafficLightPitch: CGFloat = 20
 
     func measure(_ window: NSWindow) {
         guard let content = window.contentView,
@@ -346,9 +353,13 @@ final class WindowChrome {
               let zoom = window.standardWindowButton(.zoomButton) else { return }
         let closeRect = close.convert(close.bounds, to: content)
         let zoomRect = zoom.convert(zoom.bounds, to: content)
+        let pitch = (zoomRect.minX - closeRect.minX) / 2
         let centerY = content.isFlipped ? closeRect.midY : content.bounds.height - closeRect.midY
         // Only publish real changes, so measuring during a view update doesn't loop.
         if abs(centerY - trafficLightsCenterY) > 0.5 { trafficLightsCenterY = centerY }
         if abs(zoomRect.maxX - trafficLightsMaxX) > 0.5 { trafficLightsMaxX = zoomRect.maxX }
+        if abs(closeRect.minX - trafficLightsMinX) > 0.5 { trafficLightsMinX = closeRect.minX }
+        if closeRect.size != trafficLightSize { trafficLightSize = closeRect.size }
+        if abs(pitch - trafficLightPitch) > 0.5 { trafficLightPitch = pitch }
     }
 }

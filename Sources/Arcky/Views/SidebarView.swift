@@ -52,13 +52,22 @@ struct SidebarView: View {
 private struct SidebarTopBar: View {
     @Environment(BrowserStore.self) private var store
     @Environment(\.spaceTheme) private var theme
+    @Environment(\.floatingSidebar) private var floating
 
     var body: some View {
         let runtime = store.activeTabID.map { store.pool.runtime(for: $0) }
         let webView = store.pool.existingWebView(for: store.activeTabID)
         HStack(spacing: 4) {
-            // Clear of the traffic lights, whatever their size on this macOS version.
-            Spacer().frame(width: max(0, WindowChrome.shared.trafficLightsMaxX - SidebarView.horizontalPadding + 8))
+            // Clear of the traffic lights, whatever their size on this macOS version. The floating
+            // sidebar draws its own in that space, where the window's own would be.
+            let chrome = WindowChrome.shared
+            if floating {
+                TrafficLights()
+                    .padding(.leading, max(0, chrome.trafficLightsMinX - SidebarView.horizontalPadding))
+                    .padding(.trailing, 8)
+            } else {
+                Spacer().frame(width: max(0, chrome.trafficLightsMaxX - SidebarView.horizontalPadding + 8))
+            }
             IconButton(systemName: "sidebar.left", help: "Hide Sidebar (⌘S)") { store.toggleSidebar() }
             Spacer()
             IconButton(systemName: "arrow.left", help: "Back (⌘[)") { webView?.goBack() }
@@ -75,6 +84,50 @@ private struct SidebarTopBar: View {
         .frame(height: SidebarView.topBarHeight)
         .background(Color.clear.contentShape(Rectangle()).gesture(WindowDragGesture()))
         .foregroundStyle(theme.secondaryText)
+    }
+}
+
+/// Close, minimise and full-screen buttons drawn like the window's own, for the floating sidebar
+/// (the real ones stay put in the window's corner and can't slide in with it).
+private struct TrafficLights: View {
+    @Environment(\.controlActiveState) private var activeState
+    @State private var hovering = false
+
+    var body: some View {
+        let chrome = WindowChrome.shared
+        let diameter = min(chrome.trafficLightSize.width, chrome.trafficLightSize.height) - 2
+        HStack(spacing: chrome.trafficLightPitch - chrome.trafficLightSize.width) {
+            light(Color(red: 1, green: 0.37, blue: 0.34), glyph: "xmark", diameter: diameter) {
+                BrowserStore.shared.mainWindow?.performClose(nil)
+            }
+            light(Color(red: 1, green: 0.74, blue: 0.18), glyph: "minus", diameter: diameter) {
+                BrowserStore.shared.mainWindow?.miniaturize(nil)
+            }
+            light(Color(red: 0.16, green: 0.79, blue: 0.25), glyph: "arrow.up.left.and.arrow.down.right", diameter: diameter) {
+                BrowserStore.shared.mainWindow?.toggleFullScreen(nil)
+            }
+        }
+        .onHover { hovering = $0 }
+    }
+
+    private func light(_ color: Color, glyph: String, diameter: CGFloat, action: @escaping () -> Void) -> some View {
+        let active = activeState == .key || activeState == .active || hovering
+        return Button(action: action) {
+            Circle()
+                .fill(active ? color : Color.secondary.opacity(0.35))
+                .overlay(Circle().strokeBorder(.black.opacity(0.12), lineWidth: 0.5))
+                .overlay {
+                    if hovering {
+                        Image(systemName: glyph)
+                            .font(.system(size: diameter * 0.5, weight: .bold))
+                            .foregroundStyle(.black.opacity(0.55))
+                    }
+                }
+                .frame(width: diameter, height: diameter)
+                .frame(width: WindowChrome.shared.trafficLightSize.width, height: WindowChrome.shared.trafficLightSize.height)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
