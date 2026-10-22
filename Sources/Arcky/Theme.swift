@@ -73,6 +73,13 @@ struct SpaceTheme {
             }
     }
 
+    /// The same colours for a light or dark surface, e.g. glass that follows the system appearance.
+    func appearance(dark: Bool) -> SpaceTheme {
+        var theme = self
+        theme.dark = dark
+        return theme
+    }
+
     var selectedFill: Color { dark ? .white.opacity(0.16) : .white.opacity(0.92) }
     var hoverFill: Color { .white.opacity(dark ? 0.08 : 0.35) }
     var tileFill: Color { .white.opacity(dark ? 0.08 : 0.4) }

@@ -33,11 +33,12 @@ struct RootView: View {
                     .contentShape(Rectangle())
                     .onHover { if $0 { peeking = true } }
                 if peeking {
+                    // Floating over the page, the sidebar is glass that follows the system's light
+                    // or dark appearance, tinted with the space's colour.
                     SidebarView()
-                        .environment(\.colorScheme, theme.dark ? .dark : .light)
+                        .environment(\.spaceTheme, theme.appearance(dark: colorScheme == .dark))
                         .frame(width: sidebarWidth)
-                        .background(theme.background)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .floatingSidebarSurface(RoundedRectangle(cornerRadius: 16, style: .continuous), tint: theme.accent)
                         .shadow(color: .black.opacity(0.3), radius: 16, x: 4)
                         .padding(6)
                         .onHover { if !$0 { peeking = false } }

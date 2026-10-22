@@ -61,6 +61,14 @@ extension View {
             .glassSurface(shape, fallback: Color(nsColor: .windowBackgroundColor))
     }
 
+    /// The hover-revealed sidebar: glass with a light wash of the window colour (darker in Dark
+    /// Mode, lighter in Light Mode) so its text reads over any page, and a hint of the space's tint.
+    func floatingSidebarSurface<S: Shape>(_ shape: S, tint: Color) -> some View {
+        background(Color(nsColor: .windowBackgroundColor).opacity(0.4), in: shape)
+            .glassSurface(shape, tint: tint.opacity(0.15), fallback: .thickMaterial)
+            .clipShape(shape)
+    }
+
     /// Groups nearby glass shapes so they blend into each other, on macOS 26 and later.
     @ViewBuilder
     func glassGroup(spacing: CGFloat = 8) -> some View {
