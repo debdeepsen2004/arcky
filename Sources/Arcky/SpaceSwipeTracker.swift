@@ -10,6 +10,8 @@ final class SpaceSwipeTracker {
 
     /// The sidebar's frame in window coordinates, kept current by `SidebarFrameReporter`.
     var sidebarFrame: CGRect = .zero
+    /// The hidden sidebar is floating over the page, so swipes over it count too.
+    var floatingSidebarShown = false
 
     private static let threshold: CGFloat = 70
     private var accumulatedX: CGFloat = 0
@@ -30,13 +32,13 @@ final class SpaceSwipeTracker {
         if event.momentumPhase != [] { return swallowingMomentum }
         swallowingMomentum = false
 
-        guard event.window === store.mainWindow, store.sidebarVisible else { return false }
+        guard event.window === store.mainWindow, store.sidebarVisible || floatingSidebarShown else { return false }
 
         if event.phase == [] {
             return handleWheel(event)
         }
         if event.phase.contains(.began) {
-            guard sidebarFrame.contains(event.locationInWindow) else { return false }
+            guard overSidebar(event) else { return false }
             accumulatedX = 0
             accumulatedY = 0
             axis = nil
@@ -62,6 +64,12 @@ final class SpaceSwipeTracker {
         return axis == .horizontal
     }
 
+    /// The floating sidebar closes as soon as the pointer leaves it, so while it's out the
+    /// pointer is over it. (Its reported frame can be stale mid-slide.)
+    private func overSidebar(_ event: NSEvent) -> Bool {
+        floatingSidebarShown || sidebarFrame.contains(event.locationInWindow)
+    }
+
     private func finish(cancelled: Bool) {
         // Natural scrolling: fingers moving left give negative deltas and mean "next space".
         if !cancelled, abs(accumulatedX) >= Self.threshold {
@@ -78,7 +86,7 @@ final class SpaceSwipeTracker {
     }
 
     private func handleWheel(_ event: NSEvent) -> Bool {
-        guard sidebarFrame.contains(event.locationInWindow),
+        guard overSidebar(event),
               abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) else { return false }
         let now = Date()
         if now.timeIntervalSince(lastWheelEvent) > 0.3 { wheelAccumulated = 0 }

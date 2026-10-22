@@ -56,6 +56,7 @@ struct RootView: View {
         .animation(.spring(duration: 0.25), value: peeking)
         .animation(.easeInOut(duration: 0.25), value: store.activeSpaceID)
         .onChange(of: store.sidebarVisible) { peeking = false }
+        .onChange(of: peeking) { SpaceSwipeTracker.shared.floatingSidebarShown = peeking }
         // While peeking, the floating sidebar draws its own traffic lights so they move with it.
         .background(WindowConfigurator(showsTrafficLights: store.sidebarVisible))
         .sheet(isPresented: Binding(get: { store.showingArchive }, set: { store.showingArchive = $0 })) {
