@@ -13,6 +13,8 @@ struct BrowserCommands: Commands {
             Button("New Tab") { store.openCommandBar(.newTab) }
                 .keyboardShortcut("t")
             Button("New Space") { store.createSpace() }
+            Button("New Folder") { store.newFolder() }
+                .keyboardShortcut("n", modifiers: [.command, .option])
             Divider()
             Button("Reopen Closed Tab") { store.reopenClosedTab() }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
@@ -54,7 +56,12 @@ struct BrowserCommands: Commands {
                 .keyboardShortcut("d")
             Button("Add / Remove Favorite") { store.activeTabID.map(store.toggleFavorite) }
             Button("Duplicate Tab") { store.activeTabID.map(store.duplicate) }
+            Button("Rename Tab") { store.renamingID = store.activeTabID }
             Button("Clear Today Tabs") { store.clearToday() }
+            Divider()
+            Button("Show Archive") { store.showingArchive = true }
+            Button("Show Downloads") { store.showDownloads() }
+                .keyboardShortcut("j", modifiers: [.command, .shift])
             Divider()
             Button("Next Tab") { store.cycleTab(by: 1) }
                 .keyboardShortcut(.downArrow, modifiers: [.command, .option])

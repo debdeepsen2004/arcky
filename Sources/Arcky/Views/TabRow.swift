@@ -12,10 +12,14 @@ struct TabRow: View {
         let selected = store.activeTabID == tab.id
         HStack(spacing: 8) {
             Favicon(tab: tab, size: 16)
-            Text(tab.displayTitle)
-                .font(.system(size: 13))
-                .lineLimit(1)
-                .truncationMode(.tail)
+            if store.renamingID == tab.id {
+                InlineRenameField(initial: tab.displayTitle) { store.renameTab(tab.id, to: $0) }
+            } else {
+                Text(tab.displayTitle)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
             Spacer(minLength: 0)
             if hovering {
                 Button { store.close(tab.id) } label: {
@@ -48,10 +52,7 @@ struct TabRow: View {
         .contextMenu { TabContextMenu(tab: tab, location: location) }
     }
 
-    private var isPinned: Bool {
-        if case .today = location { return false }
-        return true
-    }
+    private var isPinned: Bool { !location.isToday }
 }
 
 struct TabContextMenu: View {
@@ -65,16 +66,23 @@ struct TabContextMenu: View {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(url.absoluteString, forType: .string)
         }
+        Button("Rename…") { store.renamingID = tab.id }
         Divider()
         switch location {
         case .today:
             Button("Pin Tab") { store.togglePin(tab.id) }
             Button("Add to Favorites") { store.toggleFavorite(tab.id) }
-        case .pinned:
+        case .pinned, .folder:
             Button("Unpin Tab") { store.togglePin(tab.id) }
             Button("Add to Favorites") { store.toggleFavorite(tab.id) }
         case .favorites:
             Button("Remove from Favorites") { store.toggleFavorite(tab.id) }
+        }
+        if location != .favorites {
+            Button("Add to New Folder") {
+                let container = location.acceptsFolders ? location : .pinned(store.spaceID(of: location) ?? store.activeSpaceID)
+                store.newFolder(in: container, containing: [tab.id])
+            }
         }
         if store.spaces.count > 1, location != .favorites {
             Menu("Move to Space") {

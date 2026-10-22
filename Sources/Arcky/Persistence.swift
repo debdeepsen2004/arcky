@@ -8,6 +8,7 @@ struct PersistedState: Codable {
     var selectedTabBySpace: [UUID: UUID]
     var archive: [HistoryEntry]
     var history: [HistoryEntry]
+    var autoArchive: AutoArchiveInterval?
 }
 
 enum Persistence {

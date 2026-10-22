@@ -156,19 +156,37 @@ private struct FavoriteTile: View {
     }
 }
 
+/// Space name above the pinned section. Dropping on it pins at the end; hovering shows "New Folder".
 private struct SpaceHeader: View {
     let space: Space
+    @Environment(BrowserStore.self) private var store
     @Environment(\.spaceTheme) private var theme
+    @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 6) {
             Text(space.emoji)
             Text(space.name).font(.system(size: 12, weight: .semibold))
             Spacer()
+            if hovering {
+                Button { store.newFolder(in: .pinned(space.id)) } label: {
+                    Image(systemName: "folder.badge.plus").font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .help("New Folder (⌥⌘N)")
+            }
         }
         .foregroundStyle(theme.secondaryText)
         .padding(.horizontal, 6)
-        .padding(.vertical, 6)
+        .frame(height: 28)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .dropDestination(for: String.self) { items, _ in
+            dropTabs(items, store: store, to: .pinned(space.id))
+        }
+        .contextMenu {
+            Button("New Folder") { store.newFolder(in: .pinned(space.id)) }
+        }
     }
 }
 
@@ -188,8 +206,8 @@ private struct PinnedSection: View {
                     dropTabs(items, store: store, to: .pinned(space.id))
                 }
         } else {
-            ForEach(space.pinned) { tab in
-                TabRow(tab: tab, location: .pinned(space.id))
+            ForEach(space.pinned) { node in
+                SidebarNodeView(node: node, container: .pinned(space.id), depth: 0)
             }
         }
     }

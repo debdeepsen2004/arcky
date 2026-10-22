@@ -126,7 +126,35 @@ extension WebViewPool: WKNavigationDelegate {
             store?.newTab(url, select: flags.contains(.shift))
             return .cancel
         }
+        if navigationAction.shouldPerformDownload { return .download }
         return .allow
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
+        if !navigationResponse.canShowMIMEType { return .download }
+        if let http = navigationResponse.response as? HTTPURLResponse,
+           let disposition = http.value(forHTTPHeaderField: "Content-Disposition"),
+           disposition.lowercased().hasPrefix("attachment") {
+            return .download
+        }
+        return .allow
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        startDownload(download, in: webView)
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        startDownload(download, in: webView)
+    }
+
+    private func startDownload(_ download: WKDownload, in webView: WKWebView) {
+        store?.downloads.attach(download)
+        store?.showingDownloads = true
+        // A tab opened only to fetch a file (e.g. a target=_blank download link) has nothing to show.
+        if webView.backForwardList.currentItem == nil, let id = tabID(of: webView) {
+            store?.close(id, archiving: false)
+        }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

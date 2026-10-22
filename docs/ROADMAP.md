@@ -41,13 +41,19 @@ backend would plug in.
 - Navigation: back/forward/reload/stop, ⌘-click background tabs, popups as tabs, zoom
 - Copy URL (⇧⌘C), JS alert/confirm, file upload, persistence of the whole sidebar
 
-### Stage 2: Sidebar depth
-- Folders and nested folders in pinned; "New Folder from Selection"
-- Rename tabs (double-click), multi-select (⌘/⇧-click), drag between spaces
-- Auto-archive Today tabs (12h / 24h / 7d / 30d / never) and the Archive page
-- Show the sidebar on hover at the left edge when hidden; resizable sidebar width
-- Two-finger swipe between spaces; sidebar on the right option
-- Downloads (WKDownload) with a downloads popover
+### Stage 2: Sidebar depth ✅
+- Folders and nested folders in pinned (⌥⌘N, "Add to New Folder", ungroup, delete);
+  drop onto a folder to file a tab; collapsed folders still show the active tab
+- Inline rename for tabs and folders
+- Auto-archive Today tabs (12h / 24h / 7d / 30d / never, default 12h, checked every
+  minute and at launch) and the Archive sheet with search, day grouping and restore
+- Hidden sidebar slides in when the pointer reaches the left edge; resizable sidebar width
+- Downloads (WKDownload) into ~/Downloads with a progress ring, popover (⇧⌘J),
+  open/reveal/cancel; tabs opened only to download a file close themselves
+
+### Stage 2.5: Sidebar polish (carried over)
+- Multi-select (⌘/⇧-click) and "New Folder from Selection"; drag tabs between spaces
+- Two-finger swipe between spaces; sidebar-on-the-right option; settings for sidebar
 
 ### Stage 3: Arc signature features
 - **Little Arc**: small floating windows for links opened from other apps; default browser

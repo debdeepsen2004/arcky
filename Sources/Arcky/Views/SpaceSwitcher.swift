@@ -15,6 +15,9 @@ struct SpaceSwitcher: View {
 
     var body: some View {
         HStack(spacing: 2) {
+            IconButton(systemName: "archivebox", help: "Archive") { store.showingArchive = true }
+                .foregroundStyle(theme.secondaryText)
+            DownloadsButton()
             Spacer()
             ForEach(store.spaces) { space in
                 let active = space.id == store.activeSpaceID
@@ -33,6 +36,8 @@ struct SpaceSwitcher: View {
             IconButton(systemName: "plus", help: "New Space") { store.createSpace() }
                 .foregroundStyle(theme.secondaryText)
             Spacer()
+            // Balances the two library buttons so the space icons stay centred.
+            Color.clear.frame(width: 56, height: 1)
         }
         .frame(height: 30)
         .alert("Rename Space", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
