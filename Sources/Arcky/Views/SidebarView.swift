@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SidebarView: View {
@@ -24,10 +25,17 @@ struct SidebarView: View {
                 .padding(.bottom, 20)
             }
             .scrollIndicators(.never)
+            .offset(x: store.swipeOffset)
             .id(store.activeSpaceID)
-            .transition(.opacity)
+            // Slides in from the side being moved towards, like flipping between pages.
+            .transition(.asymmetric(
+                insertion: .move(edge: store.spaceSwitchForward ? .trailing : .leading).combined(with: .opacity),
+                removal: .move(edge: store.spaceSwitchForward ? .leading : .trailing).combined(with: .opacity)
+            ))
+            .clipped()
             SpaceSwitcher()
         }
+        .background(SidebarFrameReporter())
         .padding(.horizontal, 10)
         .padding(.top, 8)
         .padding(.bottom, 10)
@@ -169,9 +177,9 @@ private struct FavoriteTile: View {
             )
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
-            .onTapGesture { store.select(tab.id) }
+            .onTapGesture { store.handleClick(on: tab.id, modifiers: currentClickModifiers()) }
             .help(tab.displayTitle)
-            .draggable(tab.id.uuidString)
+            .draggable(dragPayload(for: tab.id, store: store))
             .dropDestination(for: String.self) { items, _ in
                 dropTabs(items, store: store, to: .favorites(store.activeProfileID), before: tab.id)
             }
@@ -297,7 +305,8 @@ private struct NewTabRow: View {
 /// Handles a sidebar drop of dragged tab IDs.
 @MainActor
 func dropTabs(_ items: [String], store: BrowserStore, to destination: TabLocation, before beforeID: UUID? = nil) -> Bool {
-    let ids = items.compactMap(UUID.init(uuidString:))
-    for id in ids { store.move(id, to: destination, before: beforeID) }
+    // Each item is one ID, or several comma-separated when a selection was dragged.
+    let ids = items.flatMap { $0.split(separator: ",") }.compactMap { UUID(uuidString: String($0)) }
+    store.moveTabs(ids, to: destination, before: beforeID)
     return !ids.isEmpty
 }

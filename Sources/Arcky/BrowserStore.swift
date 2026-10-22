@@ -16,6 +16,12 @@ final class BrowserStore {
     /// Sites where the content blocker is turned off.
     var blockingAllowedSites: [String]
     var showingImport = false
+    /// Tabs picked with ⌘- or ⇧-click, acted on together. Separate from the active tab.
+    var multiSelection: Set<UUID> = []
+    /// Whether the last space switch moved right, for the sidebar's slide direction.
+    var spaceSwitchForward = true
+    /// How far the sidebar follows a two-finger swipe, in points.
+    var swipeOffset: CGFloat = 0
     /// The Boost whose editor sheet is open.
     var editingBoostID: UUID?
     /// The space whose theme editor is open.
@@ -46,6 +52,8 @@ final class BrowserStore {
     @ObservationIgnored weak var mainWindow: NSWindow?
     /// Which profile a Peek or Little Arc tab browses as.
     @ObservationIgnored private var transientProfileIDs: [UUID: UUID] = [:]
+    /// Where a ⇧-click range starts.
+    @ObservationIgnored private var selectionAnchor: UUID?
     @ObservationIgnored private var closedTabs: [(tab: BrowserTab, location: TabLocation, index: Int)] = []
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var autoArchiveTask: Task<Void, Never>?
@@ -429,6 +437,66 @@ final class BrowserStore {
         select(order[(current + delta + order.count) % order.count].id)
     }
 
+    // MARK: - Multi-select
+
+    /// A click on a sidebar tab: ⌘ toggles it in the selection, ⇧ selects a range from the
+    /// last click, and a plain click clears the selection and opens the tab.
+    func handleClick(on id: UUID, modifiers: NSEvent.ModifierFlags) {
+        if modifiers.contains(.command) {
+            // The first ⌘-click also picks up the tab you're on, as in Arc.
+            if multiSelection.isEmpty, let active = activeTabID, active != id { multiSelection.insert(active) }
+            if multiSelection.contains(id) { multiSelection.remove(id) } else { multiSelection.insert(id) }
+            selectionAnchor = id
+        } else if modifiers.contains(.shift), let anchor = selectionAnchor ?? activeTabID {
+            let order = sidebarOrder.map(\.id)
+            if let a = order.firstIndex(of: anchor), let b = order.firstIndex(of: id) {
+                multiSelection = Set(order[min(a, b)...max(a, b)])
+            }
+        } else {
+            multiSelection = []
+            selectionAnchor = id
+            select(id)
+        }
+    }
+
+    /// The tabs an action on `id` applies to: the whole selection if `id` is part of it.
+    func actionTargets(for id: UUID) -> [UUID] {
+        guard multiSelection.count > 1, multiSelection.contains(id) else { return [id] }
+        return allTabs.map(\.id).filter(multiSelection.contains)
+    }
+
+    func closeTabs(_ ids: [UUID]) {
+        for id in ids { close(id) }
+        multiSelection.subtract(ids)
+    }
+
+    /// Moves tabs, keeping their order, into `destination` before `beforeID`.
+    func moveTabs(_ ids: [UUID], to destination: TabLocation, before beforeID: UUID? = nil) {
+        for id in ids where id != beforeID { move(id, to: destination, before: beforeID) }
+        multiSelection = []
+    }
+
+    func togglePinTabs(_ ids: [UUID]) {
+        // Unpinned tabs go to the top of Today one by one, so go in reverse to keep their order.
+        let pinning = ids.contains { location(of: $0)?.0.isToday == true }
+        for id in pinning ? ids : ids.reversed() {
+            let isToday = location(of: id)?.0.isToday == true
+            if isToday == pinning { togglePin(id) }
+        }
+        multiSelection = []
+    }
+
+    /// Shows up to four tabs side by side, focusing the first.
+    func splitTabs(_ ids: [UUID]) {
+        let panes = Array(ids.prefix(TabSplit.maxPanes))
+        guard panes.count >= 2 else { return }
+        for id in panes { removeFromSplit(id) }
+        splits.append(TabSplit(tabIDs: panes))
+        multiSelection = []
+        select(panes[0])
+        scheduleSave()
+    }
+
     // MARK: - Folders
 
     /// Creates a folder (at the end of `container`, by default the active space's pinned section),
@@ -439,6 +507,7 @@ final class BrowserStore {
         let destination = container ?? .pinned(activeSpaceID)
         modifyNodes(destination) { $0.append(.folder(folder)) }
         for id in tabIDs { move(id, to: .folder(folder.id)) }
+        if !tabIDs.isEmpty { multiSelection = [] }
         renamingID = folder.id
         scheduleSave()
         return folder.id
@@ -487,9 +556,21 @@ final class BrowserStore {
     // MARK: - Spaces
 
     func switchToSpace(_ id: UUID) {
-        guard spaces.contains(where: { $0.id == id }) else { return }
+        guard let target = spaces.firstIndex(where: { $0.id == id }), id != activeSpaceID else { return }
+        spaceSwitchForward = target > activeSpaceIndex
+        multiSelection = []
         activeSpaceID = id
         scheduleSave()
+    }
+
+    /// Moves to the neighbouring space without wrapping around (swiping stops at the ends).
+    /// Returns false at an end.
+    @discardableResult
+    func stepSpace(by delta: Int) -> Bool {
+        let target = activeSpaceIndex + delta
+        guard spaces.indices.contains(target) else { return false }
+        switchToSpace(spaces[target].id)
+        return true
     }
 
     func switchToSpace(atPosition position: Int) {

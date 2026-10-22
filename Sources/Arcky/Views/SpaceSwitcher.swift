@@ -5,6 +5,9 @@ struct SpaceSwitcher: View {
     @Environment(BrowserStore.self) private var store
     @Environment(\.spaceTheme) private var theme
     @State private var renaming: Space?
+    /// The space icon a dragged tab is over.
+    @State private var dropTargetSpace: UUID?
+    @State private var hoverSwitch: Task<Void, Never>?
     @State private var draftName = ""
 
     private static let hues: [(String, Double)] = [
@@ -42,17 +45,34 @@ struct SpaceSwitcher: View {
         HStack(spacing: 2) {
             ForEach(store.spaces) { space in
                 let active = space.id == store.activeSpaceID
+                let targeted = dropTargetSpace == space.id
                 Button { store.switchToSpace(space.id) } label: {
                     Text(space.emoji)
-                        .font(.system(size: active ? 15 : 13))
+                        .font(.system(size: active || targeted ? 15 : 13))
                         .frame(width: 26, height: 26)
-                        .background(Circle().fill(active ? theme.selectedFill : .clear))
-                        .opacity(active ? 1 : 0.6)
+                        .background(Circle().fill(active || targeted ? theme.selectedFill : .clear))
+                        .overlay { if targeted { Circle().strokeBorder(theme.accent, lineWidth: 1.5) } }
+                        .opacity(active || targeted ? 1 : 0.6)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .help(space.name)
                 .contextMenu { menu(for: space) }
+                // Dropping tabs on a space moves them to the top of its Today list. Holding
+                // them over it for a moment switches to it, so they can be dropped precisely.
+                .dropDestination(for: String.self) { items, _ in
+                    dropTargetSpace = nil
+                    return dropTabs(items, store: store, to: .today(space.id), before: space.today.first?.id)
+                } isTargeted: { isTargeted in
+                    hoverSwitch?.cancel()
+                    dropTargetSpace = isTargeted ? space.id : (dropTargetSpace == space.id ? nil : dropTargetSpace)
+                    guard isTargeted, !active else { return }
+                    hoverSwitch = Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(600))
+                        guard !Task.isCancelled else { return }
+                        store.switchToSpace(space.id)
+                    }
+                }
             }
         }
     }

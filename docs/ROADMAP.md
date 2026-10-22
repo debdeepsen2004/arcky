@@ -51,9 +51,14 @@ backend would plug in.
 - Downloads (WKDownload) into ~/Downloads with a progress ring, popover (⇧⌘J),
   open/reveal/cancel; tabs opened only to download a file close themselves
 
-### Stage 2.5: Sidebar polish (carried over)
-- Multi-select (⌘/⇧-click) and "New Folder from Selection"; drag tabs between spaces
-- Two-finger swipe between spaces; sidebar-on-the-right option; settings for sidebar
+### Stage 2.5: Sidebar polish ✅
+- Multi-select: ⌘-click toggles (the current tab joins the first time), ⇧-click selects a
+  range; the selection can be closed, pinned/unpinned, filed into a new folder, opened in
+  Split View, moved to another space or dragged as one
+- Drag tabs onto a space icon to move them there; hold them over it to switch to that
+  space and drop them anywhere in its sidebar
+- Two-finger horizontal swipe over the sidebar moves between spaces (the sidebar follows
+  the fingers and slides in the direction of travel); horizontal mouse wheels step one space
 
 ### Stage 3: Arc signature features ✅
 - **Find in page** (⌘F, ⌘G, ⇧⌘G): match count, wrap-around, highlight cleared on close

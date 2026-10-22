@@ -36,6 +36,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let handled = MainActor.assumeIsolated { Self.handleKeyDown(event) }
             return handled ? nil : event
         } as Any)
+        monitors.append(NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            nonisolated(unsafe) let event = event
+            let swiped = MainActor.assumeIsolated { SpaceSwipeTracker.shared.handle(event) }
+            return swiped ? nil : event
+        } as Any)
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
             nonisolated(unsafe) let event = event
             MainActor.assumeIsolated { Self.focusSplitPane(for: event) }

@@ -10,6 +10,7 @@ struct TabRow: View {
 
     var body: some View {
         let selected = store.activeTabID == tab.id
+        let multiSelected = store.multiSelection.contains(tab.id)
         HStack(spacing: 8) {
             Favicon(tab: tab, size: 16)
             if store.renamingID == tab.id {
@@ -43,14 +44,21 @@ struct TabRow: View {
         .frame(height: 34)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(selected ? theme.selectedFill : (hovering ? theme.hoverFill : .clear))
+                .fill(selected ? theme.selectedFill : multiSelected ? theme.selectedFill.opacity(0.55) : (hovering ? theme.hoverFill : .clear))
                 .shadow(color: .black.opacity(selected ? 0.1 : 0), radius: 2, y: 1)
         )
+        .overlay {
+            if multiSelected {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(theme.accent.opacity(0.6), lineWidth: 1.5)
+            }
+        }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture { store.select(tab.id) }
-        .draggable(tab.id.uuidString) {
-            Label(tab.displayTitle, systemImage: "globe").padding(6)
+        .onTapGesture { store.handleClick(on: tab.id, modifiers: currentClickModifiers()) }
+        .draggable(dragPayload(for: tab.id, store: store)) {
+            let count = store.actionTargets(for: tab.id).count
+            Label(count > 1 ? "\(count) tabs" : tab.displayTitle, systemImage: count > 1 ? "square.stack" : "globe").padding(6)
         }
         .dropDestination(for: String.self) { items, _ in
             dropTabs(items, store: store, to: location, before: tab.id)
@@ -61,12 +69,27 @@ struct TabRow: View {
     private var isPinned: Bool { !location.isToday }
 }
 
+/// Dragging a tab that's part of the selection drags the whole selection.
+@MainActor
+func dragPayload(for id: UUID, store: BrowserStore) -> String {
+    store.actionTargets(for: id).map(\.uuidString).joined(separator: ",")
+}
+
 struct TabContextMenu: View {
     let tab: BrowserTab
     let location: TabLocation
     @Environment(BrowserStore.self) private var store
 
     var body: some View {
+        let targets = store.actionTargets(for: tab.id)
+        if targets.count > 1 {
+            MultiTabMenu(ids: targets)
+        } else {
+            singleTabMenu
+        }
+    }
+
+    @ViewBuilder private var singleTabMenu: some View {
         Button("Copy Link") {
             guard let url = tab.url else { return }
             NSPasteboard.general.clearContents()
@@ -110,6 +133,39 @@ struct TabContextMenu: View {
     }
 }
 
+/// The context menu for several selected tabs.
+private struct MultiTabMenu: View {
+    let ids: [UUID]
+    @Environment(BrowserStore.self) private var store
+
+    var body: some View {
+        Text("\(ids.count) Tabs")
+        Button("Copy Links") {
+            let links = ids.compactMap { store.tab($0)?.url?.absoluteString }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(links.joined(separator: "\n"), forType: .string)
+        }
+        Divider()
+        let anyToday = ids.contains { store.location(of: $0)?.0.isToday == true }
+        Button(anyToday ? "Pin Tabs" : "Unpin Tabs") { store.togglePinTabs(ids) }
+        Button("New Folder from Selection") { store.newFolder(containing: ids) }
+        if ids.count <= TabSplit.maxPanes {
+            Button("Open in Split View") { store.splitTabs(ids) }
+        }
+        if store.spaces.count > 1 {
+            Menu("Move to Space") {
+                ForEach(store.spaces.filter { $0.id != store.activeSpaceID }) { space in
+                    Button("\(space.emoji) \(space.name)") {
+                        store.moveTabs(ids, to: .today(space.id), before: space.today.first?.id)
+                    }
+                }
+            }
+        }
+        Divider()
+        Button("Close \(ids.count) Tabs") { store.closeTabs(ids) }
+    }
+}
+
 struct Favicon: View {
     let tab: BrowserTab
     let size: CGFloat
@@ -130,4 +186,11 @@ struct Favicon: View {
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size * 0.2))
     }
+}
+
+/// Modifier keys of the click being handled. The click event carries them, which is more
+/// reliable than the live keyboard state (a quick ⌘-click can release ⌘ before SwiftUI runs).
+@MainActor
+func currentClickModifiers() -> NSEvent.ModifierFlags {
+    NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags
 }
