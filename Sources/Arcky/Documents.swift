@@ -195,6 +195,7 @@ final class DocumentStore {
         do {
             try FileManager.default.createDirectory(at: Self.folder, withIntermediateDirectories: true)
             try JSONEncoder().encode(Saved(notes: notes, easels: easels)).write(to: Self.fileURL, options: .atomic)
+            SyncEngine.shared.scheduleSync()
         } catch {
             NSLog("Arcky: could not save notes and easels: \(error)")
         }

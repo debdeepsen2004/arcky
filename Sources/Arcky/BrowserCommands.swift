@@ -24,6 +24,8 @@ struct BrowserCommands: Commands {
                 .keyboardShortcut("n", modifiers: [.command, .control])
             Button("New Live Folder…") { store.showingNewLiveFolder = true }
             Button("Refresh Live Folders") { LiveFolderService.shared.refreshAll() }
+            Button("Sync Now") { SyncEngine.shared.syncNow() }
+                .disabled(!SyncEngine.shared.enabled)
             Divider()
             Button("Reopen Closed Tab") { store.reopenClosedTab() }
                 .keyboardShortcut("t", modifiers: [.command, .shift])

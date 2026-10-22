@@ -11,6 +11,8 @@ struct SettingsView: View {
                 .tabItem { Label("Profiles", systemImage: "person.2") }
             BoostsSettings()
                 .tabItem { Label("Boosts", systemImage: "bolt") }
+            SyncSettings()
+                .tabItem { Label("Sync", systemImage: "arrow.triangle.2.circlepath") }
         }
         .frame(width: 500, height: 420)
     }
@@ -192,5 +194,72 @@ private struct BoostsSettings: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Sync between Macs through iCloud Drive or another shared folder.
+private struct SyncSettings: View {
+    @State private var engine = SyncEngine.shared
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Sync with my other Macs", isOn: $engine.enabled)
+                LabeledContent("Folder") {
+                    HStack {
+                        Text(displayPath)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Button("Change…") { chooseFolder() }
+                    }
+                }
+                if engine.folder != SyncEngine.iCloudDriveFolder {
+                    Button("Use iCloud Drive") { engine.folder = SyncEngine.iCloudDriveFolder }
+                }
+            } footer: {
+                Text("Spaces, pinned tabs and folders, favorites, profiles, Boosts, Notes and Easels sync. Today tabs stay on each Mac. Turn sync on with the same folder on each Mac.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if engine.enabled {
+                Section {
+                    LabeledContent("Status") {
+                        if let error = engine.lastError {
+                            Text(error).foregroundStyle(.red).lineLimit(2)
+                        } else if let date = engine.lastSync {
+                            Text("Synced \(date.formatted(.relative(presentation: .named)))").foregroundStyle(.secondary)
+                        } else {
+                            Text("Not synced yet").foregroundStyle(.secondary)
+                        }
+                    }
+                    ForEach(engine.otherDevices) { device in
+                        LabeledContent(device.name) {
+                            Text("updated \(device.date.formatted(.relative(presentation: .named)))").foregroundStyle(.secondary)
+                        }
+                    }
+                    Button("Sync Now") { engine.syncNow() }
+                        .disabled(engine.syncing)
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var displayPath: String {
+        let path = engine.folder.path(percentEncoded: false)
+        if engine.folder == SyncEngine.iCloudDriveFolder { return "iCloud Drive ▸ Arcky Sync" }
+        return (path as NSString).abbreviatingWithTildeInPath
+    }
+
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Sync Here"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        engine.folder = url
+        engine.syncNow()
     }
 }

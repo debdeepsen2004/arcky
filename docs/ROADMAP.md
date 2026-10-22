@@ -117,8 +117,15 @@ Done:
   opens the top DuckDuckGo result directly; "top 5 …" / "3 …" opens that many results as
   tabs. Arc used an AI service for this; Arcky reads search results, no account needed
 
+- **Sync between Macs** (Settings ▸ Sync): through iCloud Drive (default) or any shared
+  folder. Each Mac writes only its own snapshot; others merge what changed since they last
+  looked (adds, edits, deletes), with unpublished local edits winning. Spaces, pinned
+  items, favorites, profiles, Boosts, Notes and Easels sync; Today tabs stay per-Mac;
+  live folders sync their source. CloudKit would need a signed app with an iCloud
+  entitlement, so a folder is used instead
+
 Next:
-- Sync (CloudKit); history/downloads per profile; subscribing to EasyList-style filter lists
+- History/downloads per profile; subscribing to EasyList-style filter lists
 
 ## Using Ghidra for deeper research
 

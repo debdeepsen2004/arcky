@@ -99,6 +99,7 @@ final class BrowserStore {
         updateContentRules()
         startAutoArchive()
         LiveFolderService.shared.start()
+        SyncEngine.shared.start()
     }
 
     private static func makeDefaultProfile() -> Profile {
@@ -1241,5 +1242,6 @@ final class BrowserStore {
             autoArchive: autoArchiveInterval,
             splits: splits
         ))
+        SyncEngine.shared.scheduleSync()
     }
 }
