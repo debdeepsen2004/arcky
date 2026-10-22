@@ -107,6 +107,8 @@ struct BrowserCommands: Commands {
             Button("Rename Tab") { store.renamingID = store.activeTabID }
             Button("Clear Today Tabs") { store.clearToday() }
             Divider()
+            Button("Show History") { store.showingHistory = true }
+                .keyboardShortcut("y")
             Button("Show Archive") { store.showingArchive = true }
             Button("Show Downloads") { store.showDownloads() }
                 .keyboardShortcut("j", modifiers: [.command, .shift])

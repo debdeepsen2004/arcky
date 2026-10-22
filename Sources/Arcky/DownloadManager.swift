@@ -13,6 +13,8 @@ final class DownloadItem: Identifiable {
 
     let id = UUID()
     let sourceURL: URL?
+    /// The profile whose tab started it.
+    let profileID: UUID?
     var filename: String
     var destination: URL?
     var progress: Double = 0
@@ -22,8 +24,9 @@ final class DownloadItem: Identifiable {
     @ObservationIgnored weak var download: WKDownload?
     @ObservationIgnored var progressObservation: NSKeyValueObservation?
 
-    init(sourceURL: URL?) {
+    init(sourceURL: URL?, profileID: UUID?) {
         self.sourceURL = sourceURL
+        self.profileID = profileID
         self.filename = sourceURL?.lastPathComponent ?? "Download"
     }
 }
@@ -35,18 +38,21 @@ final class DownloadManager: NSObject {
 
     @ObservationIgnored private var itemsByDownload: [ObjectIdentifier: DownloadItem] = [:]
 
-    var activeItems: [DownloadItem] { items.filter { $0.state == .inProgress } }
+    /// A profile's downloads, newest first.
+    func items(for profileID: UUID) -> [DownloadItem] {
+        items.filter { $0.profileID == profileID }
+    }
 
-    /// Average progress of running downloads, for the sidebar badge.
-    var overallProgress: Double? {
-        let active = activeItems
+    /// Average progress of a profile's running downloads, for the sidebar badge.
+    func overallProgress(for profileID: UUID) -> Double? {
+        let active = items(for: profileID).filter { $0.state == .inProgress }
         guard !active.isEmpty else { return nil }
         return active.map(\.progress).reduce(0, +) / Double(active.count)
     }
 
-    func attach(_ download: WKDownload) {
+    func attach(_ download: WKDownload, profileID: UUID?) {
         download.delegate = self
-        let item = DownloadItem(sourceURL: download.originalRequest?.url)
+        let item = DownloadItem(sourceURL: download.originalRequest?.url, profileID: profileID)
         item.download = download
         item.progressObservation = download.progress.observe(\.fractionCompleted, options: [.new]) { progress, _ in
             let fraction = progress.fractionCompleted
@@ -76,8 +82,15 @@ final class DownloadManager: NSObject {
         NSWorkspace.shared.activateFileViewerSelecting([destination])
     }
 
-    func clearCompleted() {
-        items.removeAll { $0.state != .inProgress }
+    /// Removes a profile's finished, failed and cancelled downloads from the list.
+    func clearCompleted(for profileID: UUID) {
+        items.removeAll { $0.profileID == profileID && $0.state != .inProgress }
+    }
+
+    /// Drops a deleted profile's downloads from the list (the files stay in Downloads).
+    func forgetProfile(_ profileID: UUID) {
+        for item in items where item.profileID == profileID && item.state == .inProgress { cancel(item) }
+        items.removeAll { $0.profileID == profileID }
     }
 
     private func finish(_ item: DownloadItem) {

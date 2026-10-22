@@ -1,35 +1,55 @@
 import AppKit
 import SwiftUI
 
-/// Arc's Archive: closed and auto-archived tabs, grouped by day, searchable and restorable.
+/// Arc's Archive (closed and auto-archived tabs) and the History window (pages visited),
+/// both for the active profile: grouped by day, searchable, and openable.
 struct ArchiveView: View {
+    enum Kind {
+        case archive
+        case history
+    }
+
+    var kind: Kind = .archive
     @Environment(BrowserStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    @State private var confirmingClear = false
+
+    private var entries: [HistoryEntry] {
+        kind == .archive ? store.activeArchive : store.activeHistory
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Text("Archive").font(.title2.weight(.semibold))
-                Spacer()
-                Picker("Archive tabs after", selection: Binding(get: { store.autoArchiveInterval }, set: { store.setAutoArchive($0) })) {
-                    ForEach(AutoArchiveInterval.allCases) { Text($0.title).tag($0) }
+                Text(kind == .archive ? "Archive" : "History").font(.title2.weight(.semibold))
+                if store.profiles.count > 1 {
+                    Text("\(store.activeProfile.emoji) \(store.activeProfile.name)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .help("Each profile keeps its own \(kind == .archive ? "Archive" : "history")")
                 }
-                .fixedSize()
+                Spacer()
+                if kind == .archive {
+                    Picker("Archive tabs after", selection: Binding(get: { store.autoArchiveInterval }, set: { store.setAutoArchive($0) })) {
+                        ForEach(AutoArchiveInterval.allCases) { Text($0.title).tag($0) }
+                    }
+                    .fixedSize()
+                }
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(16)
-            TextField("Search archived tabs", text: $query)
+            TextField(kind == .archive ? "Search archived tabs" : "Search history", text: $query)
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 10)
             Divider()
             if groups.isEmpty {
                 ContentUnavailableView(
-                    query.isEmpty ? "Nothing archived yet" : "No matches",
-                    systemImage: "archivebox",
-                    description: Text(query.isEmpty ? "Closed and auto-archived tabs show up here." : "")
+                    query.isEmpty ? (kind == .archive ? "Nothing archived yet" : "No history yet") : "No matches",
+                    systemImage: kind == .archive ? "archivebox" : "clock",
+                    description: Text(query.isEmpty && kind == .archive ? "Closed and auto-archived tabs show up here." : "")
                 )
                 .frame(maxHeight: .infinity)
             } else {
@@ -37,20 +57,16 @@ struct ArchiveView: View {
                     ForEach(groups, id: \.title) { group in
                         Section(group.title) {
                             ForEach(group.entries) { entry in
-                                Button {
-                                    store.restoreFromArchive(entry)
-                                    dismiss()
-                                } label: {
-                                    ArchiveRow(entry: entry).contentShape(Rectangle())
+                                Button { open(entry) } label: {
+                                    EntryRow(entry: entry).contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
                                 .contextMenu {
-                                        Button("Open in New Tab") {
-                                            store.restoreFromArchive(entry)
-                                            dismiss()
-                                        }
-                                        Button("Remove from Archive") { store.removeFromArchive(entry.id) }
+                                    Button("Open in New Tab") { open(entry) }
+                                    Button(kind == .archive ? "Remove from Archive" : "Remove from History") {
+                                        if kind == .archive { store.removeFromArchive(entry.id) } else { store.removeFromHistory(entry.id) }
                                     }
+                                }
                             }
                         }
                     }
@@ -59,24 +75,44 @@ struct ArchiveView: View {
             }
             Divider()
             HStack {
-                Text("\(store.archive.count) archived tabs").font(.caption).foregroundStyle(.secondary)
+                let count = entries.count
+                Text(kind == .archive ? "\(count) archived tabs" : "\(count) pages").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Clear Archive", role: .destructive) { store.clearArchive() }
-                    .disabled(store.archive.isEmpty)
+                Button(kind == .archive ? "Clear Archive" : "Clear History…", role: .destructive) { confirmingClear = true }
+                    .disabled(count == 0)
             }
             .padding(12)
         }
         .frame(width: 620, height: 560)
+        .confirmationDialog(
+            kind == .archive ? "Clear the Archive?" : "Clear history?",
+            isPresented: $confirmingClear
+        ) {
+            Button(kind == .archive ? "Clear Archive" : "Clear History", role: .destructive) {
+                if kind == .archive { store.clearArchive() } else { store.clearHistory() }
+            }
+        } message: {
+            Text(store.profiles.count > 1 ? "Only \(store.activeProfile.name)'s are removed; other profiles keep theirs." : "This can't be undone.")
+        }
+    }
+
+    private func open(_ entry: HistoryEntry) {
+        if kind == .archive {
+            store.restoreFromArchive(entry)
+        } else {
+            store.newTab(entry.url)
+        }
+        dismiss()
     }
 
     private var groups: [(title: String, entries: [HistoryEntry])] {
         let needle = query.lowercased()
-        let entries = needle.isEmpty ? store.archive : store.archive.filter {
+        let matching = needle.isEmpty ? entries : entries.filter {
             $0.title.lowercased().contains(needle) || $0.url.absoluteString.lowercased().contains(needle)
         }
         let calendar = Calendar.current
         var result: [(title: String, entries: [HistoryEntry])] = []
-        for entry in entries {
+        for entry in matching {
             let title: String
             if calendar.isDateInToday(entry.date) {
                 title = "Today"
@@ -95,7 +131,7 @@ struct ArchiveView: View {
     }
 }
 
-private struct ArchiveRow: View {
+private struct EntryRow: View {
     let entry: HistoryEntry
 
     var body: some View {

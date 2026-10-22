@@ -333,7 +333,7 @@ final class BrowserStore {
         if location.isToday {
             modifyNodes(location) { $0.remove(at: index) }
             closedTabs.append((tab, location, index))
-            if archiving, let url = tab.url { addToArchive(url: url, title: tab.displayTitle) }
+            if archiving, let url = tab.url { addToArchive(url: url, title: tab.displayTitle, profileID: profileID(of: location)) }
             if wasActive {
                 let remaining = nodes(in: location)
                 selectedTabBySpace[activeSpaceID] = remaining.isEmpty ? nil : remaining[min(index, remaining.count - 1)].id
@@ -677,9 +677,10 @@ final class BrowserStore {
     /// Deletes a folder and archives the tabs inside it.
     func deleteFolder(_ id: UUID) {
         guard let (location, index) = location(of: id), let folder = folder(id) else { return }
+        let profile = profileID(of: location)
         for tab in folder.allTabs {
             unload(tab.id)
-            if let url = tab.url { addToArchive(url: url, title: tab.displayTitle) }
+            if let url = tab.url { addToArchive(url: url, title: tab.displayTitle, profileID: profile) }
             for (space, selected) in selectedTabBySpace where selected == tab.id {
                 selectedTabBySpace[space] = nil
             }
@@ -949,16 +950,20 @@ final class BrowserStore {
         updateSpace(spaceID) { $0.profileID = profileID == defaultProfileID ? nil : profileID }
     }
 
-    /// Deletes a profile and all of its website data. Its spaces move to the default profile
-    /// and its favorites go to the Archive. The default profile can't be deleted.
+    /// Deletes a profile with its website data, history, Archive and download list. Its spaces
+    /// move to the default profile and its favorites go to the default profile's Archive.
+    /// The default profile can't be deleted.
     func deleteProfile(_ id: UUID) {
         guard id != defaultProfileID, profiles.contains(where: { $0.id == id }) else { return }
         for space in spaces where space.profileID == id {
             setProfile(defaultProfileID, forSpace: space.id)
         }
+        history.removeAll { $0.profileID == id }
+        archive.removeAll { $0.profileID == id }
+        downloads.forgetProfile(id)
         for tab in favoritesByProfile[id] ?? [] {
             unload(tab.id)
-            if let url = tab.url { addToArchive(url: url, title: tab.displayTitle) }
+            if let url = tab.url { addToArchive(url: url, title: tab.displayTitle, profileID: defaultProfileID) }
             for (space, selected) in selectedTabBySpace where selected == tab.id {
                 selectedTabBySpace[space] = nil
             }
@@ -1180,6 +1185,9 @@ final class BrowserStore {
         }
     }
 
+    /// The Archive of the active space's profile.
+    var activeArchive: [HistoryEntry] { archive.filter { belongsToActiveProfile($0) } }
+
     func restoreFromArchive(_ entry: HistoryEntry) {
         archive.removeAll { $0.id == entry.id }
         newTab(entry.url)
@@ -1190,26 +1198,56 @@ final class BrowserStore {
         scheduleSave()
     }
 
+    /// Empties the active profile's Archive.
     func clearArchive() {
-        archive.removeAll()
+        archive.removeAll { belongsToActiveProfile($0) }
         scheduleSave()
     }
 
-    private func addToArchive(url: URL, title: String) {
-        archive.insert(HistoryEntry(url: url, title: title), at: 0)
+    private func addToArchive(url: URL, title: String, profileID: UUID) {
+        archive.insert(HistoryEntry(url: url, title: title, profileID: storedProfileKey(profileID)), at: 0)
         if archive.count > 1000 { archive.removeLast(archive.count - 1000) }
+    }
+
+    /// Entries store nil for the default profile, so older entries count as the default's.
+    private func storedProfileKey(_ profileID: UUID) -> UUID? {
+        profileID == defaultProfileID ? nil : profileID
+    }
+
+    private func belongsToActiveProfile(_ entry: HistoryEntry) -> Bool {
+        (entry.profileID ?? defaultProfileID) == activeProfileID
     }
 
     // MARK: - History
 
-    func recordVisit(url: URL, title: String) {
+    var showingHistory = false
+
+    /// The history of the active space's profile, newest first.
+    var activeHistory: [HistoryEntry] { history.filter { belongsToActiveProfile($0) } }
+
+    /// Records a finished page load under the profile of the tab it happened in.
+    func recordVisit(url: URL, title: String, tabID: UUID) {
         guard url.scheme?.hasPrefix("http") == true else { return }
-        if let last = history.first, last.url == url {
-            if !title.isEmpty { history[0].title = title }
+        let profile = storedProfileKey(profileID(forTab: tabID))
+        // A reload or title update of the page last visited in this profile updates that entry.
+        if let i = history.firstIndex(where: { $0.profileID == profile }), history[i].url == url {
+            if !title.isEmpty { history[i].title = title }
+            history[i].date = Date()
         } else {
-            history.insert(HistoryEntry(url: url, title: title), at: 0)
+            history.insert(HistoryEntry(url: url, title: title, profileID: profile), at: 0)
             if history.count > 5000 { history.removeLast(history.count - 5000) }
         }
+        scheduleSave()
+    }
+
+    func removeFromHistory(_ id: UUID) {
+        history.removeAll { $0.id == id }
+        scheduleSave()
+    }
+
+    /// Clears the active profile's history (other profiles keep theirs).
+    func clearHistory() {
+        history.removeAll { belongsToActiveProfile($0) }
         scheduleSave()
     }
 

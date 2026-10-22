@@ -58,6 +58,9 @@ struct RootView: View {
         .sheet(isPresented: Binding(get: { store.showingArchive }, set: { store.showingArchive = $0 })) {
             ArchiveView().environment(store)
         }
+        .sheet(isPresented: Binding(get: { store.showingHistory }, set: { store.showingHistory = $0 })) {
+            ArchiveView(kind: .history).environment(store)
+        }
         .sheet(item: Binding(get: { store.editingThemeSpaceID.map(IdentifiedID.init) }, set: { store.editingThemeSpaceID = $0?.id })) { item in
             ThemeEditorView(spaceID: item.id).environment(store)
         }

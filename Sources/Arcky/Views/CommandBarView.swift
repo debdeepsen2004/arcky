@@ -97,7 +97,7 @@ struct CommandBarView: View {
 
         var seen = Set(tabs.compactMap(\.url))
         var historyCount = 0
-        for entry in store.history where historyCount < 5 && matches(entry.title, entry.url) && !seen.contains(entry.url) {
+        for entry in store.activeHistory where historyCount < 5 && matches(entry.title, entry.url) && !seen.contains(entry.url) {
             results.append(.history(entry))
             seen.insert(entry.url)
             historyCount += 1

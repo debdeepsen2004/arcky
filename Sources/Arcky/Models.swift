@@ -253,6 +253,9 @@ struct HistoryEntry: Identifiable, Codable, Hashable {
     var url: URL
     var title: String
     var date = Date()
+    /// The profile it belongs to; nil is the default profile (and every entry saved before
+    /// history became per-profile).
+    var profileID: UUID?
 }
 
 /// The container a sidebar node lives in.

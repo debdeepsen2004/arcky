@@ -465,7 +465,8 @@ extension WebViewPool: WKNavigationDelegate {
     }
 
     private func startDownload(_ download: WKDownload, in webView: WKWebView) {
-        store?.downloads.attach(download)
+        let profile = tabID(of: webView).flatMap { store?.profileID(forTab: $0) } ?? store?.activeProfileID
+        store?.downloads.attach(download, profileID: profile)
         store?.showingDownloads = true
         // A tab opened only to fetch a file (e.g. a target=_blank download link) has nothing to show.
         if webView.backForwardList.currentItem == nil, let id = tabID(of: webView) {
@@ -475,7 +476,7 @@ extension WebViewPool: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard let id = tabID(of: webView) else { return }
-        if let url = webView.url { store?.recordVisit(url: url, title: webView.title ?? "") }
+        if let url = webView.url { store?.recordVisit(url: url, title: webView.title ?? "", tabID: id) }
         webView.evaluateJavaScript(Self.faviconScript) { [weak self] result, _ in
             MainActor.assumeIsolated {
                 guard let href = result as? String, let icon = URL(string: href) else { return }

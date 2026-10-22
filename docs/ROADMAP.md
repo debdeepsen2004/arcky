@@ -124,8 +124,13 @@ Done:
   live folders sync their source. CloudKit would need a signed app with an iCloud
   entitlement, so a folder is used instead
 
+- **Per-profile history, Archive and downloads**: visits, archived tabs and downloads are
+  tagged with the profile they happened in; the command bar, History window (⌘Y, new),
+  Archive and downloads popover show the active space's profile. Clearing is per profile;
+  deleting a profile removes its history, Archive and download list
+
 Next:
-- History/downloads per profile; subscribing to EasyList-style filter lists
+- Subscribing to EasyList-style filter lists
 
 ## Using Ghidra for deeper research
 

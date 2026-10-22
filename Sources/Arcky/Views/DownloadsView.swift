@@ -8,7 +8,7 @@ struct DownloadsButton: View {
 
     var body: some View {
         @Bindable var store = store
-        let progress = store.downloads.overallProgress
+        let progress = store.downloads.overallProgress(for: store.activeProfileID)
         IconButton(systemName: "arrow.down.circle", help: "Downloads (⇧⌘J)") { store.showingDownloads.toggle() }
             .foregroundStyle(progress == nil ? theme.secondaryText : theme.accent)
             .overlay {
@@ -22,34 +22,43 @@ struct DownloadsButton: View {
                 }
             }
             .popover(isPresented: $store.showingDownloads, arrowEdge: .top) {
-                DownloadsPopover(manager: store.downloads)
+                DownloadsPopover(manager: store.downloads, profile: store.activeProfile, showsProfile: store.profiles.count > 1)
             }
     }
 }
 
+/// The active profile's downloads.
 struct DownloadsPopover: View {
     let manager: DownloadManager
+    let profile: Profile
+    let showsProfile: Bool
 
     var body: some View {
+        let items = manager.items(for: profile.id)
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Downloads").font(.headline)
+                if showsProfile {
+                    Text("\(profile.emoji) \(profile.name)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
-                if manager.items.contains(where: { $0.state != .inProgress }) {
-                    Button("Clear") { manager.clearCompleted() }
+                if items.contains(where: { $0.state != .inProgress }) {
+                    Button("Clear") { manager.clearCompleted(for: profile.id) }
                         .buttonStyle(.borderless)
                 }
             }
             .padding(12)
             Divider()
-            if manager.items.isEmpty {
+            if items.isEmpty {
                 Text("No downloads yet")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 80)
             } else {
                 ScrollView {
                     VStack(spacing: 2) {
-                        ForEach(manager.items) { item in
+                        ForEach(items) { item in
                             DownloadRow(item: item, manager: manager)
                         }
                     }
