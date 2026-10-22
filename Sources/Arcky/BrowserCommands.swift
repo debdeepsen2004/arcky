@@ -15,6 +15,7 @@ struct BrowserCommands: Commands {
             Button("New Little Arc Window") { store.openLittleArc(nil) }
                 .keyboardShortcut("n", modifiers: [.command, .option])
             Button("New Space") { store.createSpace() }
+            Button("Import…") { store.showingImport = true }
             Button("New Folder") { store.newFolder() }
                 .keyboardShortcut("n", modifiers: [.command, .control])
             Divider()
@@ -90,6 +91,10 @@ struct BrowserCommands: Commands {
                 .disabled(store.activeHost == nil)
             Button("Zap Elements") { store.startZapping() }
                 .disabled(store.activeHost == nil)
+            Button(store.isBlocking(onHost: store.activeHost) ? "Allow Ads and Trackers on This Site" : "Block Ads and Trackers on This Site") {
+                store.toggleBlockingForActiveSite()
+            }
+            .disabled(store.activeHost == nil || !store.contentBlocking)
             Divider()
             Button("Rename Tab") { store.renamingID = store.activeTabID }
             Button("Clear Today Tabs") { store.clearToday() }

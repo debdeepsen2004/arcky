@@ -41,3 +41,16 @@ State is saved to `~/Library/Application Support/Arcky/state.json`.
 | Next / previous tab | ⌥⌘↓ / ⌥⌘↑, ⌃Tab |
 | Next / previous space | ⌥⌘→ / ⌥⌘← |
 | Go to tab / space | ⌘1–9 / ⌃1–9 |
+
+## AppleScript
+
+Arcky speaks Arc's AppleScript dictionary:
+
+```applescript
+tell application "Arcky"
+    tell front window
+        make new tab with properties {URL:"https://example.com"}
+        execute active tab javascript "document.title"
+    end tell
+end tell
+```

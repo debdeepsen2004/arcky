@@ -12,6 +12,10 @@ final class BrowserStore {
     var profiles: [Profile]
     var favoritesByProfile: [UUID: [BrowserTab]]
     var boosts: [Boost]
+    var contentBlocking: Bool
+    /// Sites where the content blocker is turned off.
+    var blockingAllowedSites: [String]
+    var showingImport = false
     /// The Boost whose editor sheet is open.
     var editingBoostID: UUID?
     /// The space whose theme editor is open.
@@ -56,6 +60,8 @@ final class BrowserStore {
             self.profiles = profiles
             favoritesByProfile = saved.favoritesByProfile ?? [profiles[0].id: saved.favorites]
             boosts = saved.boosts ?? []
+            contentBlocking = saved.contentBlocking ?? true
+            blockingAllowedSites = saved.blockingAllowedSites ?? []
             activeSpaceID = saved.spaces.contains { $0.id == saved.activeSpaceID } ? saved.activeSpaceID : saved.spaces[0].id
             selectedTabBySpace = saved.selectedTabBySpace
             archive = saved.archive
@@ -69,6 +75,8 @@ final class BrowserStore {
             profiles = [profile]
             favoritesByProfile = [profile.id: []]
             boosts = []
+            contentBlocking = true
+            blockingAllowedSites = []
             activeSpaceID = home.id
             selectedTabBySpace = [:]
             archive = []
@@ -80,6 +88,7 @@ final class BrowserStore {
         miniPlayer.store = self
         littleArc.store = self
         pool.installBoosts(boosts)
+        updateContentRules()
         startAutoArchive()
     }
 
@@ -810,6 +819,106 @@ final class BrowserStore {
         return boost
     }
 
+    // MARK: - Import
+
+    /// Adds imported spaces and favorites. Source profiles other than the default become
+    /// new Arcky profiles (website data such as logins can't be carried over).
+    func applyImport(_ result: ImportResult, from sourceName: String) {
+        var profileIDs: [String: UUID] = [:]
+        func profileID(for key: String?) -> UUID {
+            guard let key else { return defaultProfileID }
+            if let id = profileIDs[key] { return id }
+            let profile = createProfile(name: "\(sourceName) \(profileIDs.count + 1)", emoji: "📥")
+            profileIDs[key] = profile.id
+            return profile.id
+        }
+
+        var firstSpaceID: UUID?
+        for imported in result.spaces {
+            var space = Space(name: imported.name, emoji: imported.emoji, hue: Self.spaceHues[spaces.count % Self.spaceHues.count])
+            space.pinned = Self.settingHomeURLs(imported.pinned)
+            space.today = imported.today
+            let profile = profileID(for: imported.profileKey)
+            space.profileID = profile == defaultProfileID ? nil : profile
+            if let color = imported.color {
+                space.style = SpaceStyle(colors: [color])
+            }
+            spaces.append(space)
+            firstSpaceID = firstSpaceID ?? space.id
+        }
+        for (key, tabs) in result.favorites {
+            let profile = profileID(for: key)
+            let existing = Set((favoritesByProfile[profile] ?? []).compactMap(\.url))
+            favoritesByProfile[profile, default: []] += tabs
+                .filter { !existing.contains($0.url ?? URL(fileURLWithPath: "/")) }
+                .map { var tab = $0; tab.homeURL = tab.url; return tab }
+        }
+        if let firstSpaceID { switchToSpace(firstSpaceID) }
+        scheduleSave()
+    }
+
+    /// Pinned tabs remember the URL they reset to when closed.
+    private static func settingHomeURLs(_ nodes: [SidebarNode]) -> [SidebarNode] {
+        nodes.map { node in
+            switch node {
+            case .tab(var tab):
+                tab.homeURL = tab.homeURL ?? tab.url
+                return .tab(tab)
+            case .folder(var folder):
+                folder.children = settingHomeURLs(folder.children)
+                return .folder(folder)
+            }
+        }
+    }
+
+    // MARK: - Content blocking
+
+    /// Whether ads and trackers are blocked on a host (blocking on, and the site not allowed).
+    func isBlocking(onHost host: String?) -> Bool {
+        guard contentBlocking else { return false }
+        guard let host else { return true }
+        return !blockingAllowedSites.contains { host == $0 || host.hasSuffix("." + $0) }
+    }
+
+    func setContentBlocking(_ enabled: Bool) {
+        contentBlocking = enabled
+        updateContentRules()
+        scheduleSave()
+    }
+
+    /// Turns blocking off (or back on) for the current site and reloads it.
+    func toggleBlockingForActiveSite() {
+        guard let host = activeHost?.strippingWWW else { return }
+        if let i = blockingAllowedSites.firstIndex(where: { host == $0 || host.hasSuffix("." + $0) }) {
+            blockingAllowedSites.remove(at: i)
+        } else {
+            blockingAllowedSites.append(host)
+        }
+        scheduleSave()
+        let tabID = activeTabID
+        updateContentRules { [weak self] in
+            self?.pool.existingWebView(for: tabID)?.reload()
+        }
+    }
+
+    /// Recompiles the rule list and installs it; `then` runs once the new rules are in place.
+    private func updateContentRules(then: (() -> Void)? = nil) {
+        let enabled = contentBlocking
+        let allowed = blockingAllowedSites
+        Task { [weak self] in
+            var ruleList: WKContentRuleList?
+            if enabled {
+                do {
+                    ruleList = try await ContentBlocker.compile(allowedSites: allowed)
+                } catch {
+                    NSLog("Arcky: content blocker rules failed to compile: \(error)")
+                }
+            }
+            self?.pool.setContentRules(ruleList)
+            then?()
+        }
+    }
+
     // MARK: - Command bar & chrome
 
     func openCommandBar(_ mode: CommandBarMode) {
@@ -908,6 +1017,8 @@ final class BrowserStore {
             profiles: profiles,
             favoritesByProfile: favoritesByProfile,
             boosts: boosts,
+            contentBlocking: contentBlocking,
+            blockingAllowedSites: blockingAllowedSites,
             activeSpaceID: activeSpaceID,
             selectedTabBySpace: selectedTabBySpace,
             archive: archive,

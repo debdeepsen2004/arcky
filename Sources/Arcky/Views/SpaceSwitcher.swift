@@ -18,7 +18,28 @@ struct SpaceSwitcher: View {
             IconButton(systemName: "archivebox", help: "Archive") { store.showingArchive = true }
                 .foregroundStyle(theme.secondaryText)
             DownloadsButton()
-            Spacer()
+            // Centred when they fit; scrollable when there are too many spaces for the sidebar.
+            ViewThatFits(in: .horizontal) {
+                spaceIcons
+                ScrollView(.horizontal) { spaceIcons }
+                    .scrollIndicators(.never)
+            }
+            .frame(maxWidth: .infinity)
+            IconButton(systemName: "plus", help: "New Space") { store.createSpace() }
+                .foregroundStyle(theme.secondaryText)
+        }
+        .frame(height: 30)
+        .alert("Rename Space", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $draftName)
+            Button("Rename") {
+                if let space = renaming { store.updateSpace(space.id) { $0.name = draftName } }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private var spaceIcons: some View {
+        HStack(spacing: 2) {
             ForEach(store.spaces) { space in
                 let active = space.id == store.activeSpaceID
                 Button { store.switchToSpace(space.id) } label: {
@@ -33,19 +54,6 @@ struct SpaceSwitcher: View {
                 .help(space.name)
                 .contextMenu { menu(for: space) }
             }
-            IconButton(systemName: "plus", help: "New Space") { store.createSpace() }
-                .foregroundStyle(theme.secondaryText)
-            Spacer()
-            // Balances the two library buttons so the space icons stay centred.
-            Color.clear.frame(width: 56, height: 1)
-        }
-        .frame(height: 30)
-        .alert("Rename Space", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Name", text: $draftName)
-            Button("Rename") {
-                if let space = renaming { store.updateSpace(space.id) { $0.name = draftName } }
-            }
-            Button("Cancel", role: .cancel) {}
         }
     }
 

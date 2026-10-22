@@ -13,5 +13,6 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/Arcky" "$APP/Contents/MacOS/Arcky"
 cp Support/Info.plist "$APP/Contents/Info.plist"
+cp Support/Arcky.sdef "$APP/Contents/Resources/Arcky.sdef"
 codesign --force --sign - "$APP" >/dev/null
 echo "$APP"

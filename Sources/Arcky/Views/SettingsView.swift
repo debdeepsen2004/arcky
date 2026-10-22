@@ -35,6 +35,22 @@ private struct GeneralSettings: View {
                 Toggle("Picture-in-Picture when leaving a playing video", isOn: $autoPictureInPicture)
             }
             Section {
+                Toggle("Block ads and trackers", isOn: Binding(get: { store.contentBlocking }, set: { store.setContentBlocking($0) }))
+                if !store.blockingAllowedSites.isEmpty {
+                    LabeledContent("Allowed sites") {
+                        Text(store.blockingAllowedSites.joined(separator: ", "))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+                Text("Applies to pages loaded after a change. Allow a site with the shield in the address bar.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                Button("Import Bookmarks and Spaces…") { store.showingImport = true }
+            }
+            Section {
                 LabeledContent("Default browser") {
                     if isDefaultBrowser {
                         Text("Arcky is your default browser").foregroundStyle(.secondary)

@@ -61,6 +61,9 @@ struct RootView: View {
         .sheet(item: Binding(get: { store.editingThemeSpaceID.map(IdentifiedID.init) }, set: { store.editingThemeSpaceID = $0?.id })) { item in
             ThemeEditorView(spaceID: item.id).environment(store)
         }
+        .sheet(isPresented: Binding(get: { store.showingImport }, set: { store.showingImport = $0 })) {
+            ImportView().environment(store)
+        }
         .sheet(item: Binding(get: { store.editingBoostID.map(IdentifiedID.init) }, set: { store.editingBoostID = $0?.id })) { item in
             BoostEditorView(boostID: item.id).environment(store)
         }

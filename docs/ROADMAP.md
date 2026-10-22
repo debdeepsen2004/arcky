@@ -80,11 +80,21 @@ backend would plug in.
   one profile. Deleting a profile erases its website data
 - Not yet: per-profile history and downloads, custom search engines, shortcut editor
 
-### Stage 5: Power features
-- **Easels and Notes** (canvas and rich-text documents in the sidebar)
-- Live folders (GitHub PRs, RSS), hover cards, "Instant Links"
-- Import from Chrome/Safari/Arc, sync (CloudKit), AppleScript (`.sdef` parity)
-- Content blocking (WKContentRuleList), site control centre (permissions)
+### Stage 5: Power features (in progress)
+Done:
+- **Content blocking**: a built-in WebKit content rule list (≈170 ad, tracker and analytics
+  domains blocked as third-party loads, plus common ad containers hidden). Toggle in
+  Settings; allow a site with the shield in the address bar or the Tabs menu
+- **Import** (File ▸ Import…): Arc spaces with pinned folders, Today tabs, per-profile
+  favorites, emoji and space colour; Chrome/Brave/Edge/Vivaldi/Chromium bookmarks; Safari
+  bookmarks (needs Full Disk Access); any exported bookmarks HTML file
+- **AppleScript**: Arc's dictionary (same terms and codes): windows, tabs, spaces;
+  `make new tab`, `select`, `close`, `reload`, `go back`/`go forward`, `stop`,
+  `execute … javascript`, `focus` (space). Arc scripts work after renaming the app
+
+Next:
+- Easels and Notes; live folders; hover cards; "Instant Links"
+- Sync (CloudKit); history/downloads per profile; subscribing to EasyList-style filter lists
 
 ## Using Ghidra for deeper research
 

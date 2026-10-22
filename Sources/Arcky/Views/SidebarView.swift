@@ -104,6 +104,17 @@ private struct AddressPill: View {
                 .foregroundStyle(host == nil ? theme.secondaryText : theme.primaryText)
                 .lineLimit(1)
             Spacer()
+            if host != nil, store.contentBlocking {
+                let blocking = store.isBlocking(onHost: store.activeHost)
+                Button { store.toggleBlockingForActiveSite() } label: {
+                    Image(systemName: blocking ? "shield.lefthalf.filled" : "shield.slash")
+                        .font(.system(size: 11))
+                        .foregroundStyle(theme.secondaryText)
+                }
+                .buttonStyle(.plain)
+                .opacity(hovering || !blocking ? 1 : 0)
+                .help(blocking ? "Ads and trackers blocked. Click to allow on this site" : "Blocking is off for this site. Click to turn it on")
+            }
             if host != nil {
                 // Arc's Boost bolt: filled when this site has an enabled Boost.
                 let boost = store.boost(forHost: store.activeHost)
