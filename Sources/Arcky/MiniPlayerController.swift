@@ -125,6 +125,6 @@ private struct MiniPlayerControls: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 8)
         .frame(height: 24)
-        .background(.black.opacity(0.55), in: Capsule())
+        .glassSurface(Capsule(), tint: .black.opacity(0.3), interactive: true, fallback: Color.black.opacity(0.55))
     }
 }

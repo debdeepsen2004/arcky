@@ -50,7 +50,11 @@ struct SpaceSwitcher: View {
                     Text(space.emoji)
                         .font(.system(size: active || targeted ? 15 : 13))
                         .frame(width: 26, height: 26)
-                        .background(Circle().fill(active || targeted ? theme.selectedFill : .clear))
+                        .background {
+                            if active || targeted {
+                                Circle().fill(.clear).glassSurface(Circle(), style: .clear, fallback: theme.selectedFill)
+                            }
+                        }
                         .overlay { if targeted { Circle().strokeBorder(theme.accent, lineWidth: 1.5) } }
                         .opacity(active || targeted ? 1 : 0.6)
                         .contentShape(Circle())

@@ -2,6 +2,9 @@ import AppKit
 import SwiftUI
 
 struct SidebarView: View {
+    static let horizontalPadding: CGFloat = 10
+    static let topBarHeight: CGFloat = 28
+
     @Environment(BrowserStore.self) private var store
     @Environment(\.spaceTheme) private var theme
 
@@ -36,8 +39,9 @@ struct SidebarView: View {
             SpaceSwitcher()
         }
         .background(SidebarFrameReporter())
-        .padding(.horizontal, 10)
-        .padding(.top, 8)
+        .padding(.horizontal, SidebarView.horizontalPadding)
+        // The top row's middle sits level with the traffic lights.
+        .padding(.top, max(4, WindowChrome.shared.trafficLightsCenterY - SidebarView.topBarHeight / 2))
         .padding(.bottom, 10)
         .foregroundStyle(theme.primaryText)
     }
@@ -52,7 +56,8 @@ private struct SidebarTopBar: View {
         let runtime = store.activeTabID.map { store.pool.runtime(for: $0) }
         let webView = store.pool.existingWebView(for: store.activeTabID)
         HStack(spacing: 4) {
-            Spacer().frame(width: 66)
+            // Clear of the traffic lights, whatever their size on this macOS version.
+            Spacer().frame(width: max(0, WindowChrome.shared.trafficLightsMaxX - SidebarView.horizontalPadding + 8))
             IconButton(systemName: "sidebar.left", help: "Hide Sidebar (⌘S)") { store.toggleSidebar() }
             Spacer()
             IconButton(systemName: "arrow.left", help: "Back (⌘[)") { webView?.goBack() }
@@ -66,7 +71,7 @@ private struct SidebarTopBar: View {
                     .disabled(webView == nil)
             }
         }
-        .frame(height: 28)
+        .frame(height: SidebarView.topBarHeight)
         .background(Color.clear.contentShape(Rectangle()).gesture(WindowDragGesture()))
         .foregroundStyle(theme.secondaryText)
     }
@@ -141,7 +146,8 @@ private struct AddressPill: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 34)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(hovering ? theme.selectedFill.opacity(0.8) : theme.tileFill))
+        .glassSurface(RoundedRectangle(cornerRadius: 12, style: .continuous), style: .clear, interactive: true,
+                      fallback: hovering ? theme.selectedFill.opacity(0.8) : theme.tileFill)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .onTapGesture { store.openCommandBar(.editCurrent) }
@@ -173,11 +179,16 @@ private struct FavoriteTile: View {
         Favicon(tab: tab, size: 20)
             .frame(maxWidth: .infinity)
             .frame(height: 46)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(selected ? theme.selectedFill : (hovering ? theme.selectedFill.opacity(0.6) : theme.tileFill))
-                    .shadow(color: .black.opacity(selected ? 0.12 : 0), radius: 2, y: 1)
-            )
+            .background {
+                // The open favorite is a solid tile; the rest are glass over the space's colour.
+                if selected {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(theme.selectedFill)
+                        .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
+                }
+            }
+            .glassSurface(RoundedRectangle(cornerRadius: 12, style: .continuous), style: .clear, interactive: true,
+                          fallback: selected ? Color.clear : (hovering ? theme.selectedFill.opacity(0.6) : theme.tileFill))
             .contentShape(Rectangle())
             .onHover { hovering = $0 }
             .onTapGesture { store.handleClick(on: tab.id, modifiers: currentClickModifiers()) }
@@ -207,7 +218,7 @@ private struct SpaceHeader: View {
                     .font(.system(size: 10, weight: .medium))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Capsule().fill(theme.tileFill))
+                    .glassSurface(Capsule(), style: .clear, fallback: theme.tileFill)
                     .help("This space's profile")
             }
             Spacer()

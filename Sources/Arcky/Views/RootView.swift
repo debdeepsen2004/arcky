@@ -209,25 +209,28 @@ private struct PeekView: View {
             Color.black.opacity(0.25)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .onTapGesture { store.closePeek() }
-            VStack(spacing: 0) {
-                HStack(spacing: 6) {
+            VStack(spacing: 10) {
+                // The controls float above the page on their own piece of glass.
+                HStack(spacing: 2) {
                     IconButton(systemName: "xmark", help: "Close (Esc)") { store.closePeek() }
                     Text(tab.url?.host()?.strippingWWW ?? tab.displayTitle)
                         .font(.system(size: 12, weight: .medium))
                         .lineLimit(1)
-                    Spacer()
+                        .padding(.horizontal, 6)
                     IconButton(systemName: "arrow.up.left.and.arrow.down.right", help: "Open as Tab") { store.expandPeek() }
                 }
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 6)
                 .frame(height: 36)
+                .readableGlassSurface(Capsule())
                 WebContentView(tab: tab, pool: store.pool, takesFocus: true)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .shadow(color: .black.opacity(0.35), radius: 30, y: 10)
             }
-            .background(Color(nsColor: .windowBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .shadow(color: .black.opacity(0.35), radius: 30, y: 10)
             .padding(.horizontal, 56)
-            .padding(.vertical, 36)
+            .padding(.top, 14)
+            .padding(.bottom, 36)
         }
     }
 }
@@ -260,9 +263,9 @@ private struct FindBar: View {
         .padding(.leading, 10)
         .padding(.trailing, 4)
         .frame(height: 36)
-        // Solid, not a material: over a white page a material turns mid-grey and the count disappears.
-        .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))
+        // Glass keeps its text legible over any page; before macOS 26 a plain material turned
+        // mid-grey over white pages and hid the count, so the fallback is solid.
+        .readableGlassSurface(Capsule())
         .shadow(color: .black.opacity(0.2), radius: 8, y: 2)
         .fixedSize()
         .onAppear { focused = true }
@@ -320,6 +323,31 @@ struct WindowConfigurator: NSViewRepresentable {
             for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
                 window.standardWindowButton(kind)?.isHidden = !showsTrafficLights
             }
+            WindowChrome.shared.measure(window)
         }
+    }
+}
+
+/// Where the window's traffic lights really are. Their size and position differ between
+/// macOS versions, so the sidebar's top row lines up with them by measurement, not constants.
+@MainActor @Observable
+final class WindowChrome {
+    static let shared = WindowChrome()
+
+    /// From the window's top edge to the middle of the traffic lights.
+    private(set) var trafficLightsCenterY: CGFloat = 22
+    /// From the window's left edge to the right edge of the zoom (green) button.
+    private(set) var trafficLightsMaxX: CGFloat = 70
+
+    func measure(_ window: NSWindow) {
+        guard let content = window.contentView,
+              let close = window.standardWindowButton(.closeButton),
+              let zoom = window.standardWindowButton(.zoomButton) else { return }
+        let closeRect = close.convert(close.bounds, to: content)
+        let zoomRect = zoom.convert(zoom.bounds, to: content)
+        let centerY = content.isFlipped ? closeRect.midY : content.bounds.height - closeRect.midY
+        // Only publish real changes, so measuring during a view update doesn't loop.
+        if abs(centerY - trafficLightsCenterY) > 0.5 { trafficLightsCenterY = centerY }
+        if abs(zoomRect.maxX - trafficLightsMaxX) > 0.5 { trafficLightsMaxX = zoomRect.maxX }
     }
 }

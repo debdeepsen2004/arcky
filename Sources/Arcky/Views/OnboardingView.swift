@@ -52,11 +52,11 @@ struct OnboardingView: View {
                 if step == .finish {
                     Button("Start Browsing") { complete() }
                         .keyboardShortcut(.defaultAction)
-                        .buttonStyle(.borderedProminent)
+                        .glassButtonStyle(prominent: true)
                 } else {
                     Button(step == .welcome ? "Get Started" : "Continue") { move(1) }
                         .keyboardShortcut(.defaultAction)
-                        .buttonStyle(.borderedProminent)
+                        .glassButtonStyle(prominent: true)
                 }
             }
             .padding(20)

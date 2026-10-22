@@ -11,6 +11,11 @@ struct CommandBarView: View {
     @State private var keyMonitor: Any?
     @FocusState private var focused: Bool
 
+    private static var backdropDim: Double {
+        if #available(macOS 26, *) { return 0.05 }
+        return 0.12
+    }
+
     enum Suggestion: Hashable {
         case navigate(URL)
         case search(String)
@@ -23,7 +28,8 @@ struct CommandBarView: View {
     var body: some View {
         let items = suggestions
         ZStack(alignment: .top) {
-            Color.black.opacity(0.12)
+            // A lighter dim where the panel is glass, so it shows the page rather than a grey wash.
+            Color.black.opacity(Self.backdropDim)
                 .contentShape(Rectangle())
                 .onTapGesture { dismiss() }
             VStack(spacing: 0) {
@@ -53,8 +59,7 @@ struct CommandBarView: View {
                 }
             }
             .frame(width: 640)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.2)))
+            .readableGlassSurface(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .shadow(color: .black.opacity(0.25), radius: 30, y: 12)
             .padding(.top, 110)
         }
@@ -186,7 +191,7 @@ private struct SuggestionRow: View {
         .foregroundStyle(selected ? .white : .primary)
         .padding(.horizontal, 12)
         .frame(height: 38)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(selected ? theme.accent : .clear))
+        .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(selected ? theme.accent : .clear))
     }
 
     @ViewBuilder private var icon: some View {

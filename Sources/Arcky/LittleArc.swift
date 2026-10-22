@@ -74,7 +74,7 @@ struct LittleArcView: View {
                     .font(.system(size: 12))
                     .padding(.horizontal, 8)
                     .frame(height: 24)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(theme.tileFill))
+                    .glassSurface(Capsule(), style: .clear, fallback: theme.tileFill)
                     .focused($editingAddress)
                     .onSubmit(load)
                 IconButton(systemName: "arrow.up.left.and.arrow.down.right", help: "Open in Arcky") {
